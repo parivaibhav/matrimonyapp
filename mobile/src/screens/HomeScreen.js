@@ -1,5 +1,7 @@
 import React, { useCallback, useState } from "react";
+
 import {
+  ActivityIndicator,
   FlatList,
   Pressable,
   RefreshControl,
@@ -7,8 +9,11 @@ import {
   Text,
   View,
 } from "react-native";
+
 import { SafeAreaView } from "react-native-safe-area-context";
+
 import { useFocusEffect } from "@react-navigation/native";
+
 import { Ionicons } from "@expo/vector-icons";
 
 import { api } from "../api";
@@ -20,49 +25,106 @@ export default function HomeScreen({ navigation }) {
   const [profiles, setProfiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState("");
 
   const { numColumns, maxContentWidth, isSmallPhone, isTablet } =
     useResponsiveLayout();
 
-  // =====================================================
-  // LOAD PROFILES
-  // =====================================================
+  /* =====================================================
+     NORMALIZE RESPONSE
+  ===================================================== */
+
+  const normalizeProfiles = (data) => {
+    if (Array.isArray(data)) {
+      return data;
+    }
+
+    if (Array.isArray(data?.profiles)) {
+      return data.profiles;
+    }
+
+    if (Array.isArray(data?.users)) {
+      return data.users;
+    }
+
+    if (Array.isArray(data?.data)) {
+      return data.data;
+    }
+
+    return [];
+  };
+
+  /* =====================================================
+     LOAD PROFILES
+  ===================================================== */
 
   const load = async () => {
     try {
       setLoading(true);
+      setError("");
 
-      const { data } = await api.get("/profiles");
+      console.log("================================");
 
-      setProfiles(data);
-    } catch (e) {
-      console.log("Error fetching home profiles:", e);
+      console.log("GETTING PROFILES...");
+
+      const response = await api.get("/profiles");
+
+      console.log("PROFILE STATUS:", response.status);
+
+      console.log("PROFILE RESPONSE:", response.data);
+
+      const list = normalizeProfiles(response.data);
+
+      console.log("PROFILE COUNT:", list.length);
+
+      setProfiles(list);
+    } catch (error) {
+      console.log("PROFILE LOAD ERROR:", error?.response?.status);
+
+      console.log("PROFILE LOAD ERROR DATA:", error?.response?.data);
+
+      console.log("PROFILE LOAD ERROR MESSAGE:", error?.message);
+
+      setProfiles([]);
+
+      setError(error?.response?.data?.message || "Unable to load profiles.");
     } finally {
       setLoading(false);
     }
   };
 
-  // =====================================================
-  // REFRESH PROFILES
-  // =====================================================
+  /* =====================================================
+     REFRESH
+  ===================================================== */
 
   const onRefresh = async () => {
     try {
       setRefreshing(true);
+      setError("");
 
-      const { data } = await api.get("/profiles");
+      const response = await api.get("/profiles");
 
-      setProfiles(data);
-    } catch (e) {
-      console.log("Error refreshing profiles:", e);
+      console.log("REFRESH STATUS:", response.status);
+
+      console.log("REFRESH PROFILE RESPONSE:", response.data);
+
+      const list = normalizeProfiles(response.data);
+
+      console.log("REFRESH PROFILE COUNT:", list.length);
+
+      setProfiles(list);
+    } catch (error) {
+      console.log("REFRESH ERROR:", error?.response?.data || error?.message);
+
+      setError(error?.response?.data?.message || "Unable to refresh profiles.");
     } finally {
       setRefreshing(false);
     }
   };
 
-  // =====================================================
-  // RELOAD WHEN SCREEN GETS FOCUS
-  // =====================================================
+  /* =====================================================
+     SCREEN FOCUS
+  ===================================================== */
 
   useFocusEffect(
     useCallback(() => {
@@ -70,35 +132,32 @@ export default function HomeScreen({ navigation }) {
     }, []),
   );
 
-  // =====================================================
-  // SEARCH
-  // =====================================================
+  /* =====================================================
+     NAVIGATION
+  ===================================================== */
 
   const openSearch = () => {
     navigation.getParent()?.navigate("Search");
   };
 
-  // =====================================================
-  // NOTIFICATIONS
-  // =====================================================
-
   const openNotifications = () => {
     navigation.getParent()?.navigate("Notifications");
   };
 
-  // =====================================================
-  // PROFILE DETAIL
-  // =====================================================
-
   const openProfile = (profileId) => {
+    if (!profileId) {
+      console.log("PROFILE ID MISSING");
+      return;
+    }
+
     navigation.getParent()?.navigate("ProfileDetail", {
       profileId,
     });
   };
 
-  // =====================================================
-  // HEADER ACTION
-  // =====================================================
+  /* =====================================================
+     ACTION BUTTON
+  ===================================================== */
 
   const ActionButton = ({ icon, onPress, primary = false, badge = false }) => {
     return (
@@ -107,7 +166,9 @@ export default function HomeScreen({ navigation }) {
         hitSlop={8}
         style={({ pressed }) => [
           styles.actionButton,
+
           primary && styles.primaryActionButton,
+
           pressed && styles.actionPressed,
         ]}
       >
@@ -122,31 +183,137 @@ export default function HomeScreen({ navigation }) {
     );
   };
 
-  // =====================================================
-  // SKELETON HEADER
-  // =====================================================
+  /* =====================================================
+     HEADER
+  ===================================================== */
 
-  const HeaderSkeleton = () => {
+  const Header = () => {
     return (
       <View style={[styles.header, isTablet && styles.headerTablet]}>
         <View style={styles.headerRow}>
-          <View style={styles.titleSkeletonContainer}>
-            <View style={styles.titleSkeleton} />
-            <View style={styles.subtitleSkeleton} />
+          <View style={styles.titleContainer}>
+            <View style={styles.titleLine}>
+              <Text style={[styles.title, isSmallPhone && styles.smallTitle]}>
+                Discover
+              </Text>
+
+              <View style={styles.onlineDot} />
+            </View>
+
+            <Text
+              style={[styles.subtitle, isSmallPhone && styles.smallSubtitle]}
+              numberOfLines={1}
+            >
+              Find meaningful connections
+            </Text>
           </View>
 
-          <View style={styles.actionsSkeleton}>
-            <View style={styles.actionSkeleton} />
-            <View style={styles.actionSkeleton} />
+          <View style={styles.actionGroup}>
+            <ActionButton icon="search-outline" primary onPress={openSearch} />
+
+            <ActionButton
+              icon="notifications-outline"
+              badge
+              onPress={openNotifications}
+            />
+
+            {!isSmallPhone && (
+              <ActionButton icon="refresh-outline" onPress={onRefresh} />
+            )}
           </View>
         </View>
+
+        <Pressable
+          onPress={openSearch}
+          style={({ pressed }) => [
+            styles.searchBar,
+            pressed && styles.searchBarPressed,
+          ]}
+        >
+          <Ionicons name="search-outline" size={19} color={colors.muted} />
+
+          <Text style={styles.searchPlaceholder}>
+            Search profiles, city, profession...
+          </Text>
+
+          <View style={styles.searchFilter}>
+            <Ionicons name="options-outline" size={17} color={colors.primary} />
+          </View>
+        </Pressable>
       </View>
     );
   };
 
-  // =====================================================
-  // UI
-  // =====================================================
+  /* =====================================================
+     SKELETON
+  ===================================================== */
+
+  const ProfileSkeleton = () => (
+    <View
+      style={[
+        styles.profileSkeleton,
+        numColumns > 1 && styles.profileSkeletonGrid,
+      ]}
+    >
+      <View style={styles.skeletonImage} />
+
+      <View style={styles.skeletonLineLarge} />
+
+      <View style={styles.skeletonLineMedium} />
+
+      <View style={styles.skeletonLineSmall} />
+
+      <View style={styles.skeletonBottomRow}>
+        <View style={styles.skeletonButton} />
+
+        <View style={styles.skeletonButton} />
+      </View>
+    </View>
+  );
+
+  /* =====================================================
+     INITIAL LOADING
+  ===================================================== */
+
+  if (loading && profiles.length === 0) {
+    return (
+      <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
+        <View
+          style={[
+            styles.container,
+            {
+              maxWidth: maxContentWidth,
+            },
+          ]}
+        >
+          <Header />
+
+          <FlatList
+            key={`loading-${numColumns}`}
+            data={Array.from({
+              length: numColumns > 1 ? 6 : 4,
+            })}
+            numColumns={numColumns}
+            keyExtractor={(_, index) => `loading-${index}`}
+            contentContainerStyle={styles.list}
+            columnWrapperStyle={numColumns > 1 ? styles.row : undefined}
+            showsVerticalScrollIndicator={false}
+            renderItem={() => (
+              <View
+                style={numColumns > 1 ? styles.gridItem : styles.singleItem}
+              >
+                <ProfileSkeleton />
+              </View>
+            )}
+          />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  /* =====================================================
+     MAIN UI
+  ===================================================== */
 
   return (
     <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
@@ -158,102 +325,18 @@ export default function HomeScreen({ navigation }) {
           },
         ]}
       >
-        {/* =================================================
-            MODERN HEADER
-        ================================================= */}
-
-        {loading && profiles.length === 0 ? (
-          <HeaderSkeleton />
-        ) : (
-          <View style={[styles.header, isTablet && styles.headerTablet]}>
-            <View style={styles.headerRow}>
-              {/* =================================================
-                  TITLE
-              ================================================= */}
-
-              <View style={styles.titleContainer}>
-                <View style={styles.titleLine}>
-                  <Text
-                    style={[styles.title, isSmallPhone && styles.smallTitle]}
-                  >
-                    Discover
-                  </Text>
-
-                  <View style={styles.onlineDot} />
-                </View>
-
-                <Text
-                  style={[
-                    styles.subtitle,
-                    isSmallPhone && styles.smallSubtitle,
-                  ]}
-                  numberOfLines={1}
-                >
-                  Find meaningful connections
-                </Text>
-              </View>
-
-              {/* =================================================
-                  ACTIONS
-              ================================================= */}
-
-              <View style={styles.actionGroup}>
-                <ActionButton
-                  icon="search-outline"
-                  primary
-                  onPress={openSearch}
-                />
-
-                <ActionButton
-                  icon="notifications-outline"
-                  badge
-                  onPress={openNotifications}
-                />
-
-                {!isSmallPhone && (
-                  <ActionButton icon="refresh-outline" onPress={onRefresh} />
-                )}
-              </View>
-            </View>
-
-            {/* =================================================
-                SEARCH BAR
-            ================================================= */}
-
-            <Pressable
-              onPress={openSearch}
-              style={({ pressed }) => [
-                styles.searchBar,
-                pressed && styles.searchBarPressed,
-              ]}
-            >
-              <Ionicons name="search-outline" size={19} color={colors.muted} />
-
-              <Text style={styles.searchPlaceholder}>
-                Search profiles, city, profession...
-              </Text>
-
-              <View style={styles.searchFilter}>
-                <Ionicons
-                  name="options-outline"
-                  size={17}
-                  color={colors.primary}
-                />
-              </View>
-            </Pressable>
-          </View>
-        )}
-
-        {/* =================================================
-            PROFILE LIST
-        ================================================= */}
+        <Header />
 
         <FlatList
-          key={numColumns}
+          key={`profiles-${numColumns}`}
           data={profiles}
           numColumns={numColumns}
-          keyExtractor={(item) => item._id}
-          contentContainerStyle={styles.list}
+          keyExtractor={(item, index) => String(item?._id || item?.id || index)}
+          contentContainerStyle={[
+            styles.list,
+
+            profiles.length === 0 && styles.emptyList,
+          ]}
           columnWrapperStyle={numColumns > 1 ? styles.row : undefined}
           showsVerticalScrollIndicator={false}
           refreshControl={
@@ -265,65 +348,52 @@ export default function HomeScreen({ navigation }) {
             />
           }
           renderItem={({ item }) => (
-            <ProfileCard
-              profile={item}
-              numColumns={numColumns}
-              onPress={() => openProfile(item._id)}
-              loading={false}
-            />
+            <View style={numColumns > 1 ? styles.gridItem : styles.singleItem}>
+              <ProfileCard
+                profile={item}
+                numColumns={numColumns}
+                onPress={() => openProfile(item?._id || item?.id)}
+                loading={false}
+              />
+            </View>
           )}
-          ListHeaderComponent={
-            loading && profiles.length === 0
-              ? () => (
-                  <View style={styles.skeletonList}>
-                    {Array.from({
-                      length: numColumns > 1 ? 6 : 4,
-                    }).map((_, index) => (
-                      <View
-                        key={`skeleton-${index}`}
-                        style={
-                          numColumns > 1
-                            ? styles.skeletonGridItem
-                            : styles.skeletonSingleItem
-                        }
-                      >
-                        <ProfileCard loading numColumns={numColumns} />
-                      </View>
-                    ))}
-                  </View>
-                )
-              : null
-          }
           ListEmptyComponent={
-            !loading ? (
-              <View style={styles.emptyContainer}>
-                <View style={styles.emptyIcon}>
-                  <Ionicons
-                    name="people-outline"
-                    size={34}
-                    color={colors.primary}
-                  />
-                </View>
-
-                <Text style={styles.emptyTitle}>No profiles found</Text>
-
-                <Text style={styles.emptySubtitle}>
-                  Try refreshing or check back later.
-                </Text>
-
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.reloadBtn,
-                    pressed && styles.actionPressed,
-                  ]}
-                  onPress={onRefresh}
-                >
-                  <Ionicons name="refresh-outline" size={17} color="#FFFFFF" />
-
-                  <Text style={styles.reloadBtnText}>Refresh</Text>
-                </Pressable>
+            <View style={styles.emptyContainer}>
+              <View style={styles.emptyIcon}>
+                <Ionicons
+                  name={error ? "cloud-offline-outline" : "people-outline"}
+                  size={34}
+                  color={colors.primary}
+                />
               </View>
-            ) : null
+
+              <Text style={styles.emptyTitle}>
+                {error ? "Unable to load profiles" : "No profiles found"}
+              </Text>
+
+              <Text style={styles.emptySubtitle}>
+                {error || "There are no profiles available right now."}
+              </Text>
+
+              <Pressable
+                onPress={onRefresh}
+                disabled={refreshing}
+                style={({ pressed }) => [
+                  styles.reloadBtn,
+                  pressed && styles.actionPressed,
+                ]}
+              >
+                {refreshing ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Ionicons name="refresh-outline" size={17} color="#FFFFFF" />
+                )}
+
+                <Text style={styles.reloadBtnText}>
+                  {refreshing ? "Refreshing..." : "Try Again"}
+                </Text>
+              </Pressable>
+            </View>
           }
         />
       </View>
@@ -331,15 +401,11 @@ export default function HomeScreen({ navigation }) {
   );
 }
 
-// =====================================================
-// STYLES
-// =====================================================
+/* =====================================================
+   STYLES
+===================================================== */
 
 const styles = StyleSheet.create({
-  // =====================================================
-  // SCREEN
-  // =====================================================
-
   screen: {
     flex: 1,
     backgroundColor: colors.bg,
@@ -350,10 +416,6 @@ const styles = StyleSheet.create({
     width: "100%",
     alignSelf: "center",
   },
-
-  // =====================================================
-  // HEADER
-  // =====================================================
 
   header: {
     paddingHorizontal: 16,
@@ -402,8 +464,6 @@ const styles = StyleSheet.create({
     marginLeft: 7,
     marginTop: 4,
     backgroundColor: "#22C55E",
-    borderWidth: 1.5,
-    borderColor: colors.bg,
   },
 
   subtitle: {
@@ -417,10 +477,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
 
-  // =====================================================
-  // ACTION GROUP
-  // =====================================================
-
   actionGroup: {
     flexDirection: "row",
     alignItems: "center",
@@ -431,23 +487,11 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 15,
-
     alignItems: "center",
     justifyContent: "center",
-
     backgroundColor: "#FFFFFF",
-
     borderWidth: 1,
     borderColor: "rgba(15,23,42,0.06)",
-
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 3,
-    },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-
     elevation: 2,
   },
 
@@ -467,51 +511,27 @@ const styles = StyleSheet.create({
 
   notificationBadge: {
     position: "absolute",
-
     top: 8,
     right: 8,
-
     width: 7,
     height: 7,
-
     borderRadius: 4,
-
     backgroundColor: "#EF4444",
-
     borderWidth: 1.5,
     borderColor: "#FFFFFF",
   },
 
-  // =====================================================
-  // SEARCH BAR
-  // =====================================================
-
   searchBar: {
     height: 50,
-
     marginTop: 14,
-
     paddingLeft: 15,
     paddingRight: 6,
-
     flexDirection: "row",
     alignItems: "center",
-
     borderRadius: 17,
-
     backgroundColor: "#FFFFFF",
-
     borderWidth: 1,
     borderColor: "rgba(15,23,42,0.07)",
-
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-
     elevation: 2,
   },
 
@@ -521,11 +541,8 @@ const styles = StyleSheet.create({
 
   searchPlaceholder: {
     flex: 1,
-
     marginLeft: 10,
-
     color: colors.muted,
-
     fontSize: 13.5,
     fontWeight: "500",
   },
@@ -533,60 +550,11 @@ const styles = StyleSheet.create({
   searchFilter: {
     width: 39,
     height: 39,
-
     borderRadius: 13,
-
     alignItems: "center",
     justifyContent: "center",
-
     backgroundColor: colors.primaryLight,
   },
-
-  // =====================================================
-  // HEADER SKELETON
-  // =====================================================
-
-  titleSkeletonContainer: {
-    flex: 1,
-  },
-
-  titleSkeleton: {
-    width: 125,
-    height: 28,
-
-    borderRadius: 9,
-
-    backgroundColor: "#E2E8F0",
-  },
-
-  subtitleSkeleton: {
-    width: 190,
-    height: 12,
-
-    borderRadius: 6,
-
-    backgroundColor: "#E2E8F0",
-
-    marginTop: 8,
-  },
-
-  actionsSkeleton: {
-    flexDirection: "row",
-    gap: 7,
-  },
-
-  actionSkeleton: {
-    width: 42,
-    height: 42,
-
-    borderRadius: 15,
-
-    backgroundColor: "#E2E8F0",
-  },
-
-  // =====================================================
-  // LIST
-  // =====================================================
 
   list: {
     paddingHorizontal: 11,
@@ -594,94 +562,133 @@ const styles = StyleSheet.create({
     paddingBottom: 30,
   },
 
+  emptyList: {
+    flexGrow: 1,
+  },
+
   row: {
     justifyContent: "flex-start",
   },
 
-  // =====================================================
-  // SKELETON LIST
-  // =====================================================
-
-  skeletonList: {
-    width: "100%",
-  },
-
-  skeletonGridItem: {
+  gridItem: {
     width: "50%",
     paddingHorizontal: 5,
-    marginBottom: 2,
+    marginBottom: 10,
   },
 
-  skeletonSingleItem: {
+  singleItem: {
     width: "100%",
+    paddingHorizontal: 5,
     marginBottom: 12,
   },
 
-  // =====================================================
-  // EMPTY STATE
-  // =====================================================
+  profileSkeleton: {
+    width: "100%",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+
+  profileSkeletonGrid: {
+    width: "100%",
+  },
+
+  skeletonImage: {
+    width: "100%",
+    height: 190,
+    borderRadius: 16,
+    backgroundColor: "#E2E8F0",
+  },
+
+  skeletonLineLarge: {
+    width: "72%",
+    height: 17,
+    borderRadius: 8,
+    backgroundColor: "#E2E8F0",
+    marginTop: 13,
+  },
+
+  skeletonLineMedium: {
+    width: "52%",
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: "#E2E8F0",
+    marginTop: 9,
+  },
+
+  skeletonLineSmall: {
+    width: "42%",
+    height: 11,
+    borderRadius: 6,
+    backgroundColor: "#E2E8F0",
+    marginTop: 8,
+  },
+
+  skeletonBottomRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 14,
+  },
+
+  skeletonButton: {
+    flex: 1,
+    height: 36,
+    borderRadius: 11,
+    backgroundColor: "#E2E8F0",
+  },
 
   emptyContainer: {
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
-
-    marginTop: 70,
-
     paddingHorizontal: 30,
+    paddingTop: 70,
+    paddingBottom: 80,
   },
 
   emptyIcon: {
     width: 72,
     height: 72,
-
     borderRadius: 24,
-
     alignItems: "center",
     justifyContent: "center",
-
     backgroundColor: colors.primaryLight,
   },
 
   emptyTitle: {
     color: colors.text,
-
     fontSize: 18,
     fontWeight: "800",
-
     marginTop: 16,
+    textAlign: "center",
   },
 
   emptySubtitle: {
     color: colors.muted,
-
     fontSize: 13.5,
     fontWeight: "500",
-
     textAlign: "center",
-
-    marginTop: 6,
+    marginTop: 7,
+    lineHeight: 20,
   },
 
   reloadBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-
     gap: 7,
-
     marginTop: 18,
-
+    minWidth: 125,
     paddingHorizontal: 20,
     paddingVertical: 11,
-
     backgroundColor: colors.primary,
-
     borderRadius: 15,
   },
 
   reloadBtnText: {
     color: "#FFFFFF",
-
     fontWeight: "800",
     fontSize: 13.5,
   },

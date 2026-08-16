@@ -126,13 +126,47 @@ router.get("/", auth, async (req, res) => {
   try {
     const { gender, search, city, dashaNam } = req.query;
 
+    console.log("======================================");
+    console.log("GET /profiles");
+    console.log("Logged in user:", req.userId);
+    console.log("Query:", req.query);
+    console.log("======================================");
+
+    /* -------------------------------------------------------
+       BASE FILTER
+       
+       IMPORTANT:
+       Do NOT use profileCompleted: true here if you already
+       have old users in MongoDB without this field.
+    ------------------------------------------------------- */
+
     const filter = {
       _id: {
         $ne: req.userId,
       },
-
-      profileCompleted: true,
     };
+
+    /* -------------------------------------------------------
+       OPTIONAL PROFILE COMPLETION FILTER
+       
+       A profile is considered visible if:
+       - profileCompleted === true
+       OR
+       - profileCompleted does not exist
+
+       This helps with old database records.
+    ------------------------------------------------------- */
+
+    filter.$or = [
+      {
+        profileCompleted: true,
+      },
+      {
+        profileCompleted: {
+          $exists: false,
+        },
+      },
+    ];
 
     /* -------------------------------------------------------
        GENDER
@@ -146,9 +180,9 @@ router.get("/", auth, async (req, res) => {
        NAME SEARCH
     ------------------------------------------------------- */
 
-    if (search) {
+    if (search?.trim()) {
       filter.fullName = {
-        $regex: search,
+        $regex: search.trim(),
         $options: "i",
       };
     }
@@ -157,9 +191,9 @@ router.get("/", auth, async (req, res) => {
        CITY
     ------------------------------------------------------- */
 
-    if (city) {
+    if (city?.trim()) {
       filter.city = {
-        $regex: city,
+        $regex: city.trim(),
         $options: "i",
       };
     }
@@ -173,6 +207,31 @@ router.get("/", auth, async (req, res) => {
     }
 
     /* -------------------------------------------------------
+       DEBUG DATABASE COUNT
+    ------------------------------------------------------- */
+
+    const totalUsers = await User.countDocuments();
+
+    console.log("TOTAL USERS IN DATABASE:", totalUsers);
+
+    const usersWithoutCurrentUser = await User.countDocuments({
+      _id: {
+        $ne: req.userId,
+      },
+    });
+
+    console.log("USERS EXCLUDING CURRENT USER:", usersWithoutCurrentUser);
+
+    const completedUsers = await User.countDocuments({
+      _id: {
+        $ne: req.userId,
+      },
+      profileCompleted: true,
+    });
+
+    console.log("COMPLETED USERS:", completedUsers);
+
+    /* -------------------------------------------------------
        GET USERS
     ------------------------------------------------------- */
 
@@ -181,7 +240,19 @@ router.get("/", auth, async (req, res) => {
       .sort({
         createdAt: -1,
       })
-      .limit(50);
+      .limit(50)
+      .lean();
+
+    console.log("VISIBLE PROFILES:", users.length);
+
+    console.log(
+      "VISIBLE PROFILE IDS:",
+      users.map((user) => user._id),
+    );
+
+    /* -------------------------------------------------------
+       RESPONSE
+    ------------------------------------------------------- */
 
     return res.json(users);
   } catch (error) {
@@ -189,6 +260,7 @@ router.get("/", auth, async (req, res) => {
 
     return res.status(500).json({
       message: "Could not load profiles",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 });
@@ -241,9 +313,9 @@ router.put("/me", auth, async (req, res) => {
       interests,
     } = req.body;
 
-    /* -----------------------------------------------------
-         FULL NAME
-      ----------------------------------------------------- */
+    /* -------------------------------------------------------
+       FULL NAME
+    ------------------------------------------------------- */
 
     if (!fullName?.trim()) {
       return res.status(400).json({
@@ -251,9 +323,9 @@ router.put("/me", auth, async (req, res) => {
       });
     }
 
-    /* -----------------------------------------------------
-         AGE
-      ----------------------------------------------------- */
+    /* -------------------------------------------------------
+       AGE
+    ------------------------------------------------------- */
 
     if (age === undefined || age === null || age === "") {
       return res.status(400).json({
@@ -269,9 +341,9 @@ router.put("/me", auth, async (req, res) => {
       });
     }
 
-    /* -----------------------------------------------------
-         GENDER
-      ----------------------------------------------------- */
+    /* -------------------------------------------------------
+       GENDER
+    ------------------------------------------------------- */
 
     if (!gender || !["Male", "Female"].includes(gender)) {
       return res.status(400).json({
@@ -279,9 +351,9 @@ router.put("/me", auth, async (req, res) => {
       });
     }
 
-    /* -----------------------------------------------------
-         PHONE
-      ----------------------------------------------------- */
+    /* -------------------------------------------------------
+       PHONE
+    ------------------------------------------------------- */
 
     if (!phone?.trim()) {
       return res.status(400).json({
@@ -289,11 +361,11 @@ router.put("/me", auth, async (req, res) => {
       });
     }
 
-    /* -----------------------------------------------------
-         PHONE DUPLICATE CHECK
-      ----------------------------------------------------- */
-
     const cleanPhone = phone.trim();
+
+    /* -------------------------------------------------------
+       PHONE DUPLICATE CHECK
+    ------------------------------------------------------- */
 
     const existingPhone = await User.findOne({
       phone: cleanPhone,
@@ -308,9 +380,9 @@ router.put("/me", auth, async (req, res) => {
       });
     }
 
-    /* -----------------------------------------------------
-         EDUCATION
-      ----------------------------------------------------- */
+    /* -------------------------------------------------------
+       EDUCATION
+    ------------------------------------------------------- */
 
     if (education && !EDUCATION_OPTIONS.includes(education)) {
       return res.status(400).json({
@@ -318,9 +390,9 @@ router.put("/me", auth, async (req, res) => {
       });
     }
 
-    /* -----------------------------------------------------
-         DASHANAM
-      ----------------------------------------------------- */
+    /* -------------------------------------------------------
+       DASHANAM
+    ------------------------------------------------------- */
 
     if (dashaNam && !DASHANAM_OPTIONS.includes(dashaNam)) {
       return res.status(400).json({
@@ -328,9 +400,9 @@ router.put("/me", auth, async (req, res) => {
       });
     }
 
-    /* -----------------------------------------------------
-         INTERESTS
-      ----------------------------------------------------- */
+    /* -------------------------------------------------------
+       INTERESTS
+    ------------------------------------------------------- */
 
     let interestsArray = [];
 
@@ -345,9 +417,9 @@ router.put("/me", auth, async (req, res) => {
         .filter(Boolean);
     }
 
-    /* -----------------------------------------------------
-         UPDATE DATA
-      ----------------------------------------------------- */
+    /* -------------------------------------------------------
+       UPDATE DATA
+    ------------------------------------------------------- */
 
     const updates = {
       fullName: fullName.trim(),
@@ -380,12 +452,13 @@ router.put("/me", auth, async (req, res) => {
 
       interests: interestsArray,
 
+      /* VERY IMPORTANT */
       profileCompleted: true,
     };
 
-    /* -----------------------------------------------------
-         SAVE
-      ----------------------------------------------------- */
+    /* -------------------------------------------------------
+       SAVE
+    ------------------------------------------------------- */
 
     const updatedUser = await User.findByIdAndUpdate(req.userId, updates, {
       new: true,
@@ -398,8 +471,13 @@ router.put("/me", auth, async (req, res) => {
       });
     }
 
+    console.log("PROFILE UPDATED:", updatedUser._id);
+
+    console.log("PROFILE COMPLETED:", updatedUser.profileCompleted);
+
     return res.json({
       message: "Profile updated successfully.",
+
       user: updatedUser,
     });
   } catch (error) {

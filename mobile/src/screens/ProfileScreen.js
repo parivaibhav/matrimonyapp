@@ -1,5 +1,4 @@
 import React, { useCallback, useState } from "react";
-
 import {
   ActivityIndicator,
   Alert,
@@ -24,15 +23,13 @@ import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 
 import { API_URL, api, imageUrl } from "../api";
-
 import { colors } from "../theme";
 import { useResponsiveLayout } from "../utils/responsive";
-
 import Toast from "../components/Toast";
 
-/* =========================================================
-   OPTIONS
-========================================================= */
+// =====================================================
+// OPTIONS
+// =====================================================
 
 const EDUCATION_OPTIONS = [
   "10th",
@@ -80,21 +77,18 @@ const DASHANAM_OPTIONS = [
 
 const GENDER_OPTIONS = ["Male", "Female"];
 
-/* =========================================================
-   MAIN
-========================================================= */
+// =====================================================
+// MAIN
+// =====================================================
 
 export default function ProfileScreen({ setLoggedIn }) {
   const [user, setUser] = useState(null);
 
   const [loading, setLoading] = useState(true);
-
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
-
   const [uploadingBiodata, setUploadingBiodata] = useState(false);
 
   const [isEditing, setIsEditing] = useState(false);
-
   const [saving, setSaving] = useState(false);
 
   const [editForm, setEditForm] = useState({});
@@ -110,9 +104,9 @@ export default function ProfileScreen({ setLoggedIn }) {
 
   const { isSmallPhone, maxContentWidth } = useResponsiveLayout();
 
-  /* =========================================================
-     TOAST
-  ========================================================= */
+  // =====================================================
+  // TOAST
+  // =====================================================
 
   const showToast = (title, message, type = "success") => {
     setToastConfig({
@@ -130,9 +124,9 @@ export default function ProfileScreen({ setLoggedIn }) {
     }));
   };
 
-  /* =========================================================
-     LOAD USER
-  ========================================================= */
+  // =====================================================
+  // LOAD PROFILE
+  // =====================================================
 
   const loadCurrentUser = async () => {
     try {
@@ -144,8 +138,6 @@ export default function ProfileScreen({ setLoggedIn }) {
       setEditForm(data || {});
     } catch (error) {
       console.log("Error fetching profile:", error);
-
-      showToast("Error", "Could not load your profile.", "error");
     } finally {
       setLoading(false);
     }
@@ -157,9 +149,9 @@ export default function ProfileScreen({ setLoggedIn }) {
     }, []),
   );
 
-  /* =========================================================
-     UPDATE FIELD
-  ========================================================= */
+  // =====================================================
+  // UPDATE FIELD
+  // =====================================================
 
   const updateField = (key, value) => {
     setEditForm((prev) => ({
@@ -168,9 +160,9 @@ export default function ProfileScreen({ setLoggedIn }) {
     }));
   };
 
-  /* =========================================================
-     PHOTO
-  ========================================================= */
+  // =====================================================
+  // PHOTO
+  // =====================================================
 
   const handleUploadPhoto = async () => {
     try {
@@ -240,14 +232,19 @@ export default function ProfileScreen({ setLoggedIn }) {
       const data = await response.json();
 
       if (response.ok) {
-        const updatedUser = data.user;
+        const updatedUser = data.user || {
+          ...user,
+          profilePhoto: data.profilePhoto,
+        };
 
-        if (updatedUser) {
-          setUser(updatedUser);
-          setEditForm(updatedUser);
-        }
+        setUser(updatedUser);
+        setEditForm(updatedUser);
 
-        showToast("Success 🎉", "Profile photo updated successfully!");
+        showToast(
+          "Success 🎉",
+          "Profile photo updated successfully!",
+          "success",
+        );
       } else {
         showToast(
           "Upload Failed",
@@ -268,9 +265,9 @@ export default function ProfileScreen({ setLoggedIn }) {
     }
   };
 
-  /* =========================================================
-     BIODATA
-  ========================================================= */
+  // =====================================================
+  // BIODATA
+  // =====================================================
 
   const handleUploadBiodata = async () => {
     try {
@@ -281,7 +278,6 @@ export default function ProfileScreen({ setLoggedIn }) {
           "application/msword",
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         ],
-
         copyToCacheDirectory: true,
       });
 
@@ -329,14 +325,15 @@ export default function ProfileScreen({ setLoggedIn }) {
       const data = await response.json();
 
       if (response.ok) {
-        const updatedUser = data.user;
+        const updatedUser = data.user || {
+          ...user,
+          biodataUrl: data.biodataUrl,
+        };
 
-        if (updatedUser) {
-          setUser(updatedUser);
-          setEditForm(updatedUser);
-        }
+        setUser(updatedUser);
+        setEditForm(updatedUser);
 
-        showToast("Success 🎉", "Biodata uploaded successfully!");
+        showToast("Success 🎉", "Biodata uploaded successfully!", "success");
       } else {
         showToast(
           "Upload Failed",
@@ -353,9 +350,9 @@ export default function ProfileScreen({ setLoggedIn }) {
     }
   };
 
-  /* =========================================================
-     SAVE
-  ========================================================= */
+  // =====================================================
+  // SAVE PROFILE
+  // =====================================================
 
   const handleSaveProfile = async () => {
     try {
@@ -364,12 +361,18 @@ export default function ProfileScreen({ setLoggedIn }) {
         return;
       }
 
-      if (!editForm.age) {
+      if (
+        editForm.age === undefined ||
+        editForm.age === null ||
+        editForm.age === ""
+      ) {
         showToast("Required", "Please enter your age.", "error");
         return;
       }
 
-      if (Number(editForm.age) < 18) {
+      const age = Number(editForm.age);
+
+      if (Number.isNaN(age) || age < 18) {
         showToast("Invalid Age", "You must be at least 18 years old.", "error");
         return;
       }
@@ -384,25 +387,16 @@ export default function ProfileScreen({ setLoggedIn }) {
         return;
       }
 
-      if (editForm.dashaNam && !DASHANAM_OPTIONS.includes(editForm.dashaNam)) {
-        showToast(
-          "Invalid Dasha Nam",
-          "Please select a valid Dasha Nam.",
-          "error",
-        );
-        return;
-      }
-
       setSaving(true);
 
       const payload = {
-        fullName: editForm.fullName?.trim(),
+        fullName: editForm.fullName.trim(),
 
-        age: Number(editForm.age),
+        age,
 
         gender: editForm.gender,
 
-        phone: editForm.phone?.trim(),
+        phone: editForm.phone.trim(),
 
         education: editForm.education?.trim() || "",
 
@@ -412,7 +406,7 @@ export default function ProfileScreen({ setLoggedIn }) {
 
         height: editForm.height?.trim() || "",
 
-        dashaNam: editForm.dashaNam?.trim() || "",
+        dashaNam: editForm.dashaNam || "",
 
         fatherName: editForm.fatherName?.trim() || "",
 
@@ -420,9 +414,9 @@ export default function ProfileScreen({ setLoggedIn }) {
 
         fatherMobile: editForm.fatherMobile?.trim() || "",
 
-        familyDetails: editForm.familyDetails?.trim() || "",
-
         bio: editForm.bio?.trim() || "",
+
+        familyDetails: editForm.familyDetails?.trim() || "",
 
         interests: Array.isArray(editForm.interests)
           ? editForm.interests
@@ -436,13 +430,9 @@ export default function ProfileScreen({ setLoggedIn }) {
 
       const { data } = await api.put("/profiles/me", payload);
 
-      /*
-       * Backend response:
-       * {
-       *   message: "...",
-       *   user: {...}
-       * }
-       */
+      // IMPORTANT:
+      // Backend returns:
+      // { message, user }
 
       const updatedUser = data.user;
 
@@ -452,7 +442,11 @@ export default function ProfileScreen({ setLoggedIn }) {
       setIsEditing(false);
       setOpenDropdown(null);
 
-      showToast("Profile Updated ✨", "Your profile details have been saved.");
+      showToast(
+        "Profile Updated ✨",
+        "Your profile details have been saved.",
+        "success",
+      );
     } catch (error) {
       console.log("Profile update error:", error);
 
@@ -466,37 +460,31 @@ export default function ProfileScreen({ setLoggedIn }) {
     }
   };
 
-  /* =========================================================
-     LOGOUT
-  ========================================================= */
+  // =====================================================
+  // LOGOUT
+  // =====================================================
 
   const handleLogout = () => {
-    Alert.alert(
-      "Logout Confirmation",
-      "Are you sure you want to log out of your account?",
-      [
-        {
-          text: "Cancel",
-          style: "cancel",
+    Alert.alert("Logout Confirmation", "Are you sure you want to log out?", [
+      {
+        text: "Cancel",
+        style: "cancel",
+      },
+      {
+        text: "Logout",
+        style: "destructive",
+        onPress: async () => {
+          await AsyncStorage.multiRemove(["token", "user"]);
+
+          setLoggedIn(false);
         },
-
-        {
-          text: "Logout",
-          style: "destructive",
-
-          onPress: async () => {
-            await AsyncStorage.multiRemove(["token", "user"]);
-
-            setLoggedIn(false);
-          },
-        },
-      ],
-    );
+      },
+    ]);
   };
 
-  /* =========================================================
-     DROPDOWN
-  ========================================================= */
+  // =====================================================
+  // DROPDOWN
+  // =====================================================
 
   const renderDropdown = (field, label, options, placeholder) => {
     const isOpen = openDropdown === field;
@@ -543,7 +531,6 @@ export default function ProfileScreen({ setLoggedIn }) {
                   ]}
                   onPress={() => {
                     updateField(field, item);
-
                     setOpenDropdown(null);
                   }}
                 >
@@ -573,9 +560,9 @@ export default function ProfileScreen({ setLoggedIn }) {
     );
   };
 
-  /* =========================================================
-     INPUT
-  ========================================================= */
+  // =====================================================
+  // INPUT
+  // =====================================================
 
   const renderInput = (label, field, placeholder, keyboardType = "default") => (
     <View style={styles.fieldGroup}>
@@ -592,9 +579,9 @@ export default function ProfileScreen({ setLoggedIn }) {
     </View>
   );
 
-  /* =========================================================
-     LOADING
-  ========================================================= */
+  // =====================================================
+  // LOADING
+  // =====================================================
 
   if (loading && !user) {
     return (
@@ -606,9 +593,9 @@ export default function ProfileScreen({ setLoggedIn }) {
     );
   }
 
-  /* =========================================================
-     UI
-  ========================================================= */
+  // =====================================================
+  // UI
+  // =====================================================
 
   return (
     <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
@@ -633,9 +620,7 @@ export default function ProfileScreen({ setLoggedIn }) {
             },
           ]}
         >
-          {/* =================================================
-              HEADER
-          ================================================= */}
+          {/* HEADER */}
 
           <View style={styles.header}>
             <View>
@@ -656,17 +641,10 @@ export default function ProfileScreen({ setLoggedIn }) {
             </View>
 
             <Pressable
-              style={({ pressed }) => [
-                styles.editBtn,
-                pressed && {
-                  opacity: 0.7,
-                },
-              ]}
+              style={styles.editBtn}
               onPress={() => {
                 setEditForm(user || {});
-
                 setOpenDropdown(null);
-
                 setIsEditing(true);
               }}
             >
@@ -680,9 +658,7 @@ export default function ProfileScreen({ setLoggedIn }) {
             </Pressable>
           </View>
 
-          {/* =================================================
-              HERO
-          ================================================= */}
+          {/* HERO */}
 
           <View style={styles.profileHeroCard}>
             <View style={styles.avatarWrapper}>
@@ -722,11 +698,21 @@ export default function ProfileScreen({ setLoggedIn }) {
 
             <Text style={styles.userHeadline}>
               {user?.age ? `${user.age} yrs` : ""}
-
               {user?.occupation ? ` • ${user.occupation}` : ""}
-
               {user?.city ? ` • ${user.city}` : ""}
             </Text>
+
+            {user?.dashaNam && (
+              <View style={styles.dashaBadge}>
+                <Ionicons
+                  name="leaf-outline"
+                  size={14}
+                  color={colors.primary}
+                />
+
+                <Text style={styles.dashaBadgeText}>{user.dashaNam}</Text>
+              </View>
+            )}
 
             <Pressable
               style={styles.uploadPhotoTextBtn}
@@ -745,9 +731,7 @@ export default function ProfileScreen({ setLoggedIn }) {
             </Pressable>
           </View>
 
-          {/* =================================================
-              BIODATA
-          ================================================= */}
+          {/* BIODATA */}
 
           <View style={styles.biodataCard}>
             <View style={styles.biodataHeaderRow}>
@@ -807,9 +791,7 @@ export default function ProfileScreen({ setLoggedIn }) {
             </Pressable>
           </View>
 
-          {/* =================================================
-              PERSONAL DETAILS
-          ================================================= */}
+          {/* PERSONAL */}
 
           <View style={styles.infoCard}>
             <Text style={styles.infoCardTitle}>Personal Details</Text>
@@ -853,13 +835,11 @@ export default function ProfileScreen({ setLoggedIn }) {
             <InfoRow
               label="Dasha Nam"
               value={user?.dashaNam}
-              icon="sparkles-outline"
+              icon="leaf-outline"
             />
           </View>
 
-          {/* =================================================
-              FAMILY
-          ================================================= */}
+          {/* FAMILY */}
 
           <View style={styles.infoCard}>
             <Text style={styles.infoCardTitle}>Family Details</Text>
@@ -891,9 +871,7 @@ export default function ProfileScreen({ setLoggedIn }) {
             </View>
           </View>
 
-          {/* =================================================
-              ABOUT
-          ================================================= */}
+          {/* ABOUT */}
 
           <View style={styles.infoCard}>
             <Text style={styles.infoCardTitle}>About Me</Text>
@@ -903,9 +881,7 @@ export default function ProfileScreen({ setLoggedIn }) {
             </Text>
           </View>
 
-          {/* =================================================
-              LOGOUT
-          ================================================= */}
+          {/* LOGOUT */}
 
           <Pressable style={styles.logoutBtn} onPress={handleLogout}>
             <Ionicons name="log-out-outline" size={20} color="#DC2626" />
@@ -960,8 +936,6 @@ export default function ProfileScreen({ setLoggedIn }) {
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
             >
-              {/* BASIC */}
-
               <View style={styles.sectionHeader}>
                 <Text style={styles.sectionTitle}>Basic Information</Text>
 
@@ -987,8 +961,6 @@ export default function ProfileScreen({ setLoggedIn }) {
                 "Enter phone number",
                 "phone-pad",
               )}
-
-              {/* EMAIL */}
 
               <View style={styles.readOnlyBox}>
                 <View style={styles.readOnlyIcon}>
@@ -1022,10 +994,6 @@ export default function ProfileScreen({ setLoggedIn }) {
 
               <View style={styles.sectionHeader}>
                 <Text style={styles.sectionTitle}>Education & Career</Text>
-
-                <Text style={styles.sectionSub}>
-                  Add your education and profession
-                </Text>
               </View>
 
               {renderDropdown(
@@ -1044,9 +1012,11 @@ export default function ProfileScreen({ setLoggedIn }) {
               {/* DASHANAM */}
 
               <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Dashanami Information</Text>
+                <Text style={styles.sectionTitle}>Dasha Nam</Text>
 
-                <Text style={styles.sectionSub}>Select your Dasha Nam</Text>
+                <Text style={styles.sectionSub}>
+                  Select your Dashanami tradition
+                </Text>
               </View>
 
               {renderDropdown(
@@ -1118,8 +1088,6 @@ export default function ProfileScreen({ setLoggedIn }) {
                 />
               </View>
 
-              {/* SAVE */}
-
               <Pressable
                 style={[
                   styles.bottomSaveButton,
@@ -1150,9 +1118,9 @@ export default function ProfileScreen({ setLoggedIn }) {
   );
 }
 
-/* =========================================================
-   INFO ROW
-========================================================= */
+// =====================================================
+// INFO ROW
+// =====================================================
 
 function InfoRow({ label, value, icon }) {
   return (
@@ -1172,9 +1140,9 @@ function InfoRow({ label, value, icon }) {
   );
 }
 
-/* =========================================================
-   STYLES
-========================================================= */
+// =====================================================
+// STYLES
+// =====================================================
 
 const styles = StyleSheet.create({
   screen: {
@@ -1205,6 +1173,10 @@ const styles = StyleSheet.create({
     alignSelf: "center",
   },
 
+  // =====================================================
+  // HEADER
+  // =====================================================
+
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -1228,7 +1200,7 @@ const styles = StyleSheet.create({
   editBtn: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#EFF6FF",
+    backgroundColor: colors.primaryLight,
     paddingHorizontal: 14,
     paddingVertical: 9,
     borderRadius: 20,
@@ -1240,6 +1212,10 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     fontSize: 14,
   },
+
+  // =====================================================
+  // HERO
+  // =====================================================
 
   profileHeroCard: {
     backgroundColor: "#FFFFFF",
@@ -1267,7 +1243,7 @@ const styles = StyleSheet.create({
     width: 112,
     height: 112,
     borderRadius: 56,
-    backgroundColor: "#EFF6FF",
+    backgroundColor: colors.primaryLight,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -1306,6 +1282,23 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 
+  dashaBadge: {
+    marginTop: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: colors.primaryLight,
+  },
+
+  dashaBadgeText: {
+    color: colors.primary,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+
   uploadPhotoTextBtn: {
     marginTop: 13,
     flexDirection: "row",
@@ -1318,6 +1311,10 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: colors.primary,
   },
+
+  // =====================================================
+  // BIODATA
+  // =====================================================
 
   biodataCard: {
     backgroundColor: "#FFFFFF",
@@ -1338,7 +1335,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 14,
-    backgroundColor: "#EFF6FF",
+    backgroundColor: colors.primaryLight,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -1376,7 +1373,7 @@ const styles = StyleSheet.create({
   biodataUploadBtn: {
     height: 44,
     borderRadius: 14,
-    backgroundColor: "#EFF6FF",
+    backgroundColor: colors.primaryLight,
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
@@ -1389,6 +1386,10 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     fontSize: 13,
   },
+
+  // =====================================================
+  // INFO
+  // =====================================================
 
   infoCard: {
     backgroundColor: "#FFFFFF",
@@ -1426,7 +1427,7 @@ const styles = StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: 10,
-    backgroundColor: "#EFF6FF",
+    backgroundColor: colors.primaryLight,
     justifyContent: "center",
     alignItems: "center",
     marginRight: 8,
@@ -1466,6 +1467,10 @@ const styles = StyleSheet.create({
     borderRadius: 13,
   },
 
+  // =====================================================
+  // LOGOUT
+  // =====================================================
+
   logoutBtn: {
     flexDirection: "row",
     backgroundColor: "#FEF2F2",
@@ -1483,6 +1488,10 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     fontSize: 15,
   },
+
+  // =====================================================
+  // MODAL
+  // =====================================================
 
   modalHeader: {
     flexDirection: "row",
@@ -1563,6 +1572,10 @@ const styles = StyleSheet.create({
     paddingTop: 13,
   },
 
+  // =====================================================
+  // DROPDOWN
+  // =====================================================
+
   dropdownButton: {
     minHeight: 50,
     backgroundColor: "#FFFFFF",
@@ -1612,7 +1625,7 @@ const styles = StyleSheet.create({
   },
 
   dropdownItemSelected: {
-    backgroundColor: "#EFF6FF",
+    backgroundColor: colors.primaryLight,
   },
 
   dropdownItemText: {
@@ -1625,6 +1638,10 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: "800",
   },
+
+  // =====================================================
+  // READ ONLY EMAIL
+  // =====================================================
 
   readOnlyBox: {
     minHeight: 62,
@@ -1642,7 +1659,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 11,
-    backgroundColor: "#EFF6FF",
+    backgroundColor: colors.primaryLight,
     alignItems: "center",
     justifyContent: "center",
     marginRight: 10,
@@ -1670,6 +1687,10 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     fontWeight: "700",
   },
+
+  // =====================================================
+  // SAVE
+  // =====================================================
 
   bottomSaveButton: {
     height: 52,
