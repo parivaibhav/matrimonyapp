@@ -138,10 +138,7 @@ router.post("/login", async (req, res) => {
   }
 });
 
-/* =========================================================
-   SANITIZE USER
-   Never send passwordHash to mobile app
-========================================================= */
+
 
 function sanitize(user) {
   const obj = user.toObject ? user.toObject() : { ...user };

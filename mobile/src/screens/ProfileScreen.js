@@ -1,8 +1,10 @@
 import React, { useCallback, useState } from "react";
+
 import {
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -12,30 +14,105 @@ import {
   TextInput,
   View,
 } from "react-native";
+
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
+
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
+
 import { API_URL, api, imageUrl } from "../api";
+
 import { colors } from "../theme";
 import { useResponsiveLayout } from "../utils/responsive";
+
 import Toast from "../components/Toast";
+
+/* =========================================================
+   OPTIONS
+========================================================= */
+
+const EDUCATION_OPTIONS = [
+  "10th",
+  "12th",
+  "Diploma",
+  "ITI",
+  "B.A.",
+  "B.Com.",
+  "B.Sc.",
+  "BBA",
+  "BCA",
+  "B.Tech",
+  "B.E.",
+  "MBBS",
+  "BDS",
+  "LLB",
+  "B.Pharm",
+  "M.A.",
+  "M.Com.",
+  "M.Sc.",
+  "MBA",
+  "MCA",
+  "M.Tech",
+  "M.E.",
+  "MD",
+  "MS",
+  "LLM",
+  "PhD",
+  "Other",
+];
+
+const DASHANAM_OPTIONS = [
+  "Giri",
+  "Puri",
+  "Bharati",
+  "Ashram",
+  "Saraswati",
+  "Aranya",
+  "Van",
+  "Parvat",
+  "Sagar",
+  "Tirtha",
+  "Gosai",
+];
+
+const GENDER_OPTIONS = ["Male", "Female"];
+
+/* =========================================================
+   MAIN
+========================================================= */
 
 export default function ProfileScreen({ setLoggedIn }) {
   const [user, setUser] = useState(null);
+
   const [loading, setLoading] = useState(true);
+
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
   const [uploadingBiodata, setUploadingBiodata] = useState(false);
 
-  // Modern Toast state
+  const [isEditing, setIsEditing] = useState(false);
+
+  const [saving, setSaving] = useState(false);
+
+  const [editForm, setEditForm] = useState({});
+
+  const [openDropdown, setOpenDropdown] = useState(null);
+
   const [toastConfig, setToastConfig] = useState({
     visible: false,
     title: "",
     message: "",
     type: "success",
   });
+
+  const { isSmallPhone, maxContentWidth } = useResponsiveLayout();
+
+  /* =========================================================
+     TOAST
+  ========================================================= */
 
   const showToast = (title, message, type = "success") => {
     setToastConfig({
@@ -47,24 +124,28 @@ export default function ProfileScreen({ setLoggedIn }) {
   };
 
   const hideToast = () => {
-    setToastConfig((prev) => ({ ...prev, visible: false }));
+    setToastConfig((prev) => ({
+      ...prev,
+      visible: false,
+    }));
   };
 
-  // Edit profile state
-  const [isEditing, setIsEditing] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [editForm, setEditForm] = useState({});
-
-  const { isSmallPhone, isTablet, maxContentWidth } = useResponsiveLayout();
+  /* =========================================================
+     LOAD USER
+  ========================================================= */
 
   const loadCurrentUser = async () => {
     try {
       setLoading(true);
+
       const { data } = await api.get("/profiles/me/current");
+
       setUser(data);
       setEditForm(data || {});
-    } catch (e) {
-      console.log("Error fetching profile:", e);
+    } catch (error) {
+      console.log("Error fetching profile:", error);
+
+      showToast("Error", "Could not load your profile.", "error");
     } finally {
       setLoading(false);
     }
@@ -73,15 +154,35 @@ export default function ProfileScreen({ setLoggedIn }) {
   useFocusEffect(
     useCallback(() => {
       loadCurrentUser();
-    }, [])
+    }, []),
   );
 
-  // Pick & Upload Profile Photo using rock-solid native fetch FormData
+  /* =========================================================
+     UPDATE FIELD
+  ========================================================= */
+
+  const updateField = (key, value) => {
+    setEditForm((prev) => ({
+      ...prev,
+      [key]: value,
+    }));
+  };
+
+  /* =========================================================
+     PHOTO
+  ========================================================= */
+
   const handleUploadPhoto = async () => {
     try {
-      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      const permissionResult =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+
       if (!permissionResult.granted) {
-        showToast("Permission Required", "Please allow photo library access to change profile photo.", "error");
+        showToast(
+          "Permission Required",
+          "Please allow photo library access.",
+          "error",
+        );
         return;
       }
 
@@ -92,21 +193,35 @@ export default function ProfileScreen({ setLoggedIn }) {
         quality: 0.8,
       });
 
-      if (result.canceled || !result.assets?.[0]) return;
+      if (result.canceled || !result.assets?.[0]) {
+        return;
+      }
 
       const asset = result.assets[0];
+
       setUploadingPhoto(true);
 
       const token = await AsyncStorage.getItem("token");
+
       let fileUri = asset.uri;
-      if (Platform.OS === "android" && !fileUri.startsWith("file://") && !fileUri.startsWith("content://")) {
+
+      if (
+        Platform.OS === "android" &&
+        !fileUri.startsWith("file://") &&
+        !fileUri.startsWith("content://")
+      ) {
         fileUri = `file://${fileUri}`;
       }
 
-      const filename = asset.fileName || asset.uri.split("/").pop() || `photo_${Date.now()}.jpg`;
+      const filename =
+        asset.fileName ||
+        asset.uri.split("/").pop() ||
+        `photo_${Date.now()}.jpg`;
+
       const fileType = asset.mimeType || "image/jpeg";
 
       const formData = new FormData();
+
       formData.append("photo", {
         uri: fileUri,
         name: filename,
@@ -125,46 +240,77 @@ export default function ProfileScreen({ setLoggedIn }) {
       const data = await response.json();
 
       if (response.ok) {
-        if (data.user) {
-          setUser(data.user);
-        } else if (data.profilePhoto) {
-          setUser((prev) => ({ ...prev, profilePhoto: data.profilePhoto }));
+        const updatedUser = data.user;
+
+        if (updatedUser) {
+          setUser(updatedUser);
+          setEditForm(updatedUser);
         }
-        showToast("Success 🎉", "Profile photo updated successfully!", "success");
+
+        showToast("Success 🎉", "Profile photo updated successfully!");
       } else {
-        showToast("Upload Failed", data.message || "Could not upload profile photo.", "error");
+        showToast(
+          "Upload Failed",
+          data.message || "Could not upload profile photo.",
+          "error",
+        );
       }
-    } catch (e) {
-      console.log("Photo upload error:", e);
-      showToast("Upload Failed", "Photo upload failed. Please try again.", "error");
+    } catch (error) {
+      console.log("Photo upload error:", error);
+
+      showToast(
+        "Upload Failed",
+        "Photo upload failed. Please try again.",
+        "error",
+      );
     } finally {
       setUploadingPhoto(false);
     }
   };
 
-  // Pick & Upload Biodata File (PDF/Doc/Image) using rock-solid native fetch FormData
+  /* =========================================================
+     BIODATA
+  ========================================================= */
+
   const handleUploadBiodata = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: "*/*",
+        type: [
+          "application/pdf",
+          "image/*",
+          "application/msword",
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ],
+
         copyToCacheDirectory: true,
       });
 
-      if (result.canceled || !result.assets?.[0]) return;
+      if (result.canceled || !result.assets?.[0]) {
+        return;
+      }
 
       const asset = result.assets[0];
+
       setUploadingBiodata(true);
 
       const token = await AsyncStorage.getItem("token");
+
       let fileUri = asset.uri;
-      if (Platform.OS === "android" && !fileUri.startsWith("file://") && !fileUri.startsWith("content://")) {
+
+      if (
+        Platform.OS === "android" &&
+        !fileUri.startsWith("file://") &&
+        !fileUri.startsWith("content://")
+      ) {
         fileUri = `file://${fileUri}`;
       }
 
-      const filename = asset.name || `biodata_${Date.now()}.${asset.mimeType?.split('/')[1] || 'pdf'}`;
+      const filename = asset.name || `biodata_${Date.now()}.pdf`;
+
       const fileType = asset.mimeType || "application/pdf";
 
       const formData = new FormData();
+
       formData.append("biodata", {
         uri: fileUri,
         name: filename,
@@ -183,65 +329,289 @@ export default function ProfileScreen({ setLoggedIn }) {
       const data = await response.json();
 
       if (response.ok) {
-        if (data.user) {
-          setUser(data.user);
-        } else if (data.biodataUrl) {
-          setUser((prev) => ({ ...prev, biodataUrl: data.biodataUrl }));
+        const updatedUser = data.user;
+
+        if (updatedUser) {
+          setUser(updatedUser);
+          setEditForm(updatedUser);
         }
-        showToast("Success 🎉", "Biodata document uploaded successfully!", "success");
+
+        showToast("Success 🎉", "Biodata uploaded successfully!");
       } else {
-        showToast("Upload Failed", data.message || "Could not upload biodata document.", "error");
+        showToast(
+          "Upload Failed",
+          data.message || "Could not upload biodata.",
+          "error",
+        );
       }
-    } catch (e) {
-      console.log("Biodata upload error:", e);
-      showToast("Upload Error", "Failed to upload biodata file. Please try again.", "error");
+    } catch (error) {
+      console.log("Biodata upload error:", error);
+
+      showToast("Upload Error", "Failed to upload biodata file.", "error");
     } finally {
       setUploadingBiodata(false);
     }
   };
 
-  // Save updated profile info
+  /* =========================================================
+     SAVE
+  ========================================================= */
+
   const handleSaveProfile = async () => {
     try {
+      if (!editForm.fullName?.trim()) {
+        showToast("Required", "Please enter your full name.", "error");
+        return;
+      }
+
+      if (!editForm.age) {
+        showToast("Required", "Please enter your age.", "error");
+        return;
+      }
+
+      if (Number(editForm.age) < 18) {
+        showToast("Invalid Age", "You must be at least 18 years old.", "error");
+        return;
+      }
+
+      if (!editForm.phone?.trim()) {
+        showToast("Required", "Please enter your phone number.", "error");
+        return;
+      }
+
+      if (!editForm.gender || !GENDER_OPTIONS.includes(editForm.gender)) {
+        showToast("Required", "Please select your gender.", "error");
+        return;
+      }
+
+      if (editForm.dashaNam && !DASHANAM_OPTIONS.includes(editForm.dashaNam)) {
+        showToast(
+          "Invalid Dasha Nam",
+          "Please select a valid Dasha Nam.",
+          "error",
+        );
+        return;
+      }
+
       setSaving(true);
-      const { data } = await api.put("/profiles/me", editForm);
-      setUser(data);
+
+      const payload = {
+        fullName: editForm.fullName?.trim(),
+
+        age: Number(editForm.age),
+
+        gender: editForm.gender,
+
+        phone: editForm.phone?.trim(),
+
+        education: editForm.education?.trim() || "",
+
+        occupation: editForm.occupation?.trim() || "",
+
+        city: editForm.city?.trim() || "",
+
+        height: editForm.height?.trim() || "",
+
+        dashaNam: editForm.dashaNam?.trim() || "",
+
+        fatherName: editForm.fatherName?.trim() || "",
+
+        motherName: editForm.motherName?.trim() || "",
+
+        fatherMobile: editForm.fatherMobile?.trim() || "",
+
+        familyDetails: editForm.familyDetails?.trim() || "",
+
+        bio: editForm.bio?.trim() || "",
+
+        interests: Array.isArray(editForm.interests)
+          ? editForm.interests
+          : typeof editForm.interests === "string"
+            ? editForm.interests
+                .split(",")
+                .map((x) => x.trim())
+                .filter(Boolean)
+            : [],
+      };
+
+      const { data } = await api.put("/profiles/me", payload);
+
+      /*
+       * Backend response:
+       * {
+       *   message: "...",
+       *   user: {...}
+       * }
+       */
+
+      const updatedUser = data.user;
+
+      setUser(updatedUser);
+      setEditForm(updatedUser);
+
       setIsEditing(false);
-      showToast("Profile Updated ✨", "Your profile details have been saved.", "success");
-    } catch (e) {
-      showToast("Error", e.response?.data?.message || "Failed to update profile.", "error");
+      setOpenDropdown(null);
+
+      showToast("Profile Updated ✨", "Your profile details have been saved.");
+    } catch (error) {
+      console.log("Profile update error:", error);
+
+      showToast(
+        "Error",
+        error.response?.data?.message || "Failed to update profile.",
+        "error",
+      );
     } finally {
       setSaving(false);
     }
   };
 
-  // Logout handler with confirmation
+  /* =========================================================
+     LOGOUT
+  ========================================================= */
+
   const handleLogout = () => {
-    Alert.alert("Logout Confirmation", "Are you sure you want to log out of your account?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Logout",
-        style: "destructive",
-        onPress: async () => {
-          await AsyncStorage.multiRemove(["token", "user"]);
-          setLoggedIn(false);
+    Alert.alert(
+      "Logout Confirmation",
+      "Are you sure you want to log out of your account?",
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
         },
-      },
-    ]);
+
+        {
+          text: "Logout",
+          style: "destructive",
+
+          onPress: async () => {
+            await AsyncStorage.multiRemove(["token", "user"]);
+
+            setLoggedIn(false);
+          },
+        },
+      ],
+    );
   };
+
+  /* =========================================================
+     DROPDOWN
+  ========================================================= */
+
+  const renderDropdown = (field, label, options, placeholder) => {
+    const isOpen = openDropdown === field;
+
+    return (
+      <View style={styles.fieldGroup}>
+        <Text style={styles.fieldLabel}>{label}</Text>
+
+        <Pressable
+          style={[styles.dropdownButton, isOpen && styles.dropdownButtonActive]}
+          onPress={() => setOpenDropdown(isOpen ? null : field)}
+        >
+          <Text
+            style={[
+              styles.dropdownText,
+              !editForm[field] && styles.placeholderText,
+            ]}
+          >
+            {editForm[field] || placeholder}
+          </Text>
+
+          <Ionicons
+            name={isOpen ? "chevron-up" : "chevron-down"}
+            size={19}
+            color={colors.muted}
+          />
+        </Pressable>
+
+        {isOpen && (
+          <View style={styles.dropdownList}>
+            <ScrollView
+              nestedScrollEnabled
+              style={{
+                maxHeight: 230,
+              }}
+              keyboardShouldPersistTaps="handled"
+            >
+              {options.map((item) => (
+                <Pressable
+                  key={item}
+                  style={[
+                    styles.dropdownItem,
+                    editForm[field] === item && styles.dropdownItemSelected,
+                  ]}
+                  onPress={() => {
+                    updateField(field, item);
+
+                    setOpenDropdown(null);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.dropdownItemText,
+                      editForm[field] === item &&
+                        styles.dropdownItemTextSelected,
+                    ]}
+                  >
+                    {item}
+                  </Text>
+
+                  {editForm[field] === item && (
+                    <Ionicons
+                      name="checkmark"
+                      size={19}
+                      color={colors.primary}
+                    />
+                  )}
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+      </View>
+    );
+  };
+
+  /* =========================================================
+     INPUT
+  ========================================================= */
+
+  const renderInput = (label, field, placeholder, keyboardType = "default") => (
+    <View style={styles.fieldGroup}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+
+      <TextInput
+        style={styles.input}
+        value={editForm[field] != null ? String(editForm[field]) : ""}
+        onChangeText={(text) => updateField(field, text)}
+        placeholder={placeholder}
+        placeholderTextColor="#94A3B8"
+        keyboardType={keyboardType}
+      />
+    </View>
+  );
+
+  /* =========================================================
+     LOADING
+  ========================================================= */
 
   if (loading && !user) {
     return (
       <SafeAreaView style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
+
         <Text style={styles.loadingText}>Loading profile...</Text>
       </SafeAreaView>
     );
   }
 
+  /* =========================================================
+     UI
+  ========================================================= */
+
   return (
     <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
-      {/* Modern Animated Toast Overlay */}
       <Toast
         visible={toastConfig.visible}
         title={toastConfig.title}
@@ -255,41 +625,86 @@ export default function ProfileScreen({ setLoggedIn }) {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <View style={[styles.container, { maxWidth: maxContentWidth }]}>
-          {/* Header */}
+        <View
+          style={[
+            styles.container,
+            {
+              maxWidth: maxContentWidth,
+            },
+          ]}
+        >
+          {/* =================================================
+              HEADER
+          ================================================= */}
+
           <View style={styles.header}>
-            <Text style={[styles.title, isSmallPhone && { fontSize: 24 }]}>My Profile</Text>
+            <View>
+              <Text
+                style={[
+                  styles.title,
+                  isSmallPhone && {
+                    fontSize: 25,
+                  },
+                ]}
+              >
+                My Profile
+              </Text>
+
+              <Text style={styles.headerSub}>
+                Manage your matrimonial profile
+              </Text>
+            </View>
+
             <Pressable
-              style={({ pressed }) => [styles.editBtn, pressed && { opacity: 0.7 }]}
+              style={({ pressed }) => [
+                styles.editBtn,
+                pressed && {
+                  opacity: 0.7,
+                },
+              ]}
               onPress={() => {
                 setEditForm(user || {});
+
+                setOpenDropdown(null);
+
                 setIsEditing(true);
               }}
             >
-              <Ionicons name="create-outline" size={18} color={colors.primary} />
+              <Ionicons
+                name="create-outline"
+                size={18}
+                color={colors.primary}
+              />
+
               <Text style={styles.editBtnText}>Edit</Text>
             </Pressable>
           </View>
 
-          {/* Profile Card Header */}
+          {/* =================================================
+              HERO
+          ================================================= */}
+
           <View style={styles.profileHeroCard}>
             <View style={styles.avatarWrapper}>
               {user?.profilePhoto ? (
                 <Image
-                  source={{ uri: imageUrl(user.profilePhoto) }}
+                  source={{
+                    uri: imageUrl(user.profilePhoto),
+                  }}
                   style={styles.avatarImage}
                 />
               ) : (
                 <View style={styles.avatarFallback}>
                   <Text style={styles.avatarText}>
-                    {user?.fullName ? user.fullName.charAt(0).toUpperCase() : "U"}
+                    {user?.fullName
+                      ? user.fullName.charAt(0).toUpperCase()
+                      : "U"}
                   </Text>
                 </View>
               )}
 
-              {/* Camera Upload Badge */}
               <Pressable
-                style={({ pressed }) => [styles.cameraBadge, pressed && { opacity: 0.8 }]}
+                style={styles.cameraBadge}
                 onPress={handleUploadPhoto}
                 disabled={uploadingPhoto}
               >
@@ -301,46 +716,76 @@ export default function ProfileScreen({ setLoggedIn }) {
               </Pressable>
             </View>
 
-            <Text style={styles.userName}>{user?.fullName || "User Profile"}</Text>
-            <Text style={styles.userHeadline}>
-              {user?.age ? `${user.age} yrs` : ""} {user?.occupation ? `• ${user.occupation}` : ""} {user?.city ? `• ${user.city}` : ""}
+            <Text style={styles.userName}>
+              {user?.fullName || "User Profile"}
             </Text>
 
-            <Pressable style={styles.uploadPhotoTextBtn} onPress={handleUploadPhoto} disabled={uploadingPhoto}>
+            <Text style={styles.userHeadline}>
+              {user?.age ? `${user.age} yrs` : ""}
+
+              {user?.occupation ? ` • ${user.occupation}` : ""}
+
+              {user?.city ? ` • ${user.city}` : ""}
+            </Text>
+
+            <Pressable
+              style={styles.uploadPhotoTextBtn}
+              onPress={handleUploadPhoto}
+              disabled={uploadingPhoto}
+            >
+              <Ionicons
+                name="camera-outline"
+                size={14}
+                color={colors.primary}
+              />
+
               <Text style={styles.uploadPhotoText}>
-                {uploadingPhoto ? "Uploading Photo..." : "Tap to Change Profile Photo"}
+                {uploadingPhoto ? "Uploading..." : "Change Profile Photo"}
               </Text>
             </Pressable>
           </View>
 
-          {/* Biodata Upload Card */}
+          {/* =================================================
+              BIODATA
+          ================================================= */}
+
           <View style={styles.biodataCard}>
             <View style={styles.biodataHeaderRow}>
               <View style={styles.biodataIconBox}>
-                <Ionicons name="document-attach" size={22} color={colors.primary} />
+                <Ionicons
+                  name="document-text-outline"
+                  size={22}
+                  color={colors.primary}
+                />
               </View>
-              <View style={{ flex: 1 }}>
+
+              <View
+                style={{
+                  flex: 1,
+                }}
+              >
                 <Text style={styles.biodataCardTitle}>Matrimonial Biodata</Text>
+
                 <Text style={styles.biodataCardSub}>
-                  {user?.biodataUrl ? "Biodata document attached ✓" : "Upload PDF or image of your full biodata"}
+                  {user?.biodataUrl
+                    ? "Your biodata document is attached"
+                    : "Upload your PDF or biodata image"}
                 </Text>
               </View>
             </View>
 
-            {user?.biodataUrl ? (
+            {user?.biodataUrl && (
               <View style={styles.biodataAttachedBox}>
-                <Ionicons name="checkmark-circle" size={18} color="#2E7D32" />
+                <Ionicons name="checkmark-circle" size={18} color="#16A34A" />
+
                 <Text style={styles.biodataAttachedText} numberOfLines={1}>
                   {user.biodataUrl.split("/").pop()}
                 </Text>
               </View>
-            ) : null}
+            )}
 
             <Pressable
-              style={({ pressed }) => [
-                styles.biodataUploadBtn,
-                pressed && { opacity: 0.85 },
-              ]}
+              style={styles.biodataUploadBtn}
               onPress={handleUploadBiodata}
               disabled={uploadingBiodata}
             >
@@ -348,215 +793,418 @@ export default function ProfileScreen({ setLoggedIn }) {
                 <ActivityIndicator size="small" color={colors.primary} />
               ) : (
                 <>
-                  <Ionicons name="cloud-upload-outline" size={18} color={colors.primary} style={{ marginRight: 6 }} />
+                  <Ionicons
+                    name="cloud-upload-outline"
+                    size={18}
+                    color={colors.primary}
+                  />
+
                   <Text style={styles.biodataUploadBtnText}>
-                    {user?.biodataUrl ? "Replace Biodata Document" : "Upload Biodata File"}
+                    {user?.biodataUrl ? "Replace Biodata" : "Upload Biodata"}
                   </Text>
                 </>
               )}
             </Pressable>
           </View>
 
-          {/* User Personal Info Details */}
+          {/* =================================================
+              PERSONAL DETAILS
+          ================================================= */}
+
           <View style={styles.infoCard}>
             <Text style={styles.infoCardTitle}>Personal Details</Text>
 
             <InfoRow label="Email" value={user?.email} icon="mail-outline" />
+
             <InfoRow label="Phone" value={user?.phone} icon="call-outline" />
-            <InfoRow label="Gender" value={user?.gender} icon="person-outline" />
-            <InfoRow label="Age" value={user?.age ? `${user.age} yrs` : null} icon="calendar-outline" />
-            <InfoRow label="Education" value={user?.education} icon="school-outline" />
-            <InfoRow label="Occupation" value={user?.occupation} icon="briefcase-outline" />
+
+            <InfoRow
+              label="Gender"
+              value={user?.gender}
+              icon="person-outline"
+            />
+
+            <InfoRow
+              label="Age"
+              value={user?.age ? `${user.age} yrs` : null}
+              icon="calendar-outline"
+            />
+
+            <InfoRow
+              label="Education"
+              value={user?.education}
+              icon="school-outline"
+            />
+
+            <InfoRow
+              label="Occupation"
+              value={user?.occupation}
+              icon="briefcase-outline"
+            />
+
             <InfoRow label="City" value={user?.city} icon="location-outline" />
-            <InfoRow label="Height" value={user?.height} icon="resize-outline" />
-            <InfoRow label="Religion" value={user?.religion} icon="book-outline" />
-            <InfoRow label="Community" value={user?.community} icon="people-outline" />
+
+            <InfoRow
+              label="Height"
+              value={user?.height}
+              icon="resize-outline"
+            />
+
+            <InfoRow
+              label="Dasha Nam"
+              value={user?.dashaNam}
+              icon="sparkles-outline"
+            />
           </View>
 
-          {/* Bio Card */}
+          {/* =================================================
+              FAMILY
+          ================================================= */}
+
           <View style={styles.infoCard}>
-            <Text style={styles.infoCardTitle}>About Me</Text>
-            <View style={styles.textSection}>
-              <Text style={styles.textBody}>{user?.bio || "No bio added yet."}</Text>
+            <Text style={styles.infoCardTitle}>Family Details</Text>
+
+            <InfoRow
+              label="Father"
+              value={user?.fatherName}
+              icon="man-outline"
+            />
+
+            <InfoRow
+              label="Father Mobile"
+              value={user?.fatherMobile}
+              icon="call-outline"
+            />
+
+            <InfoRow
+              label="Mother"
+              value={user?.motherName}
+              icon="woman-outline"
+            />
+
+            <View style={styles.familyTextBox}>
+              <Text style={styles.familyTextLabel}>Family Background</Text>
+
+              <Text style={styles.textBody}>
+                {user?.familyDetails || "No family details added yet."}
+              </Text>
             </View>
           </View>
 
-          {/* Logout Action */}
-          <Pressable
-            style={({ pressed }) => [styles.logoutBtn, pressed && { opacity: 0.85 }]}
-            onPress={handleLogout}
-          >
-            <Ionicons name="log-out-outline" size={20} color="#D32F2F" style={{ marginRight: 8 }} />
+          {/* =================================================
+              ABOUT
+          ================================================= */}
+
+          <View style={styles.infoCard}>
+            <Text style={styles.infoCardTitle}>About Me</Text>
+
+            <Text style={styles.textBody}>
+              {user?.bio || "No bio added yet."}
+            </Text>
+          </View>
+
+          {/* =================================================
+              LOGOUT
+          ================================================= */}
+
+          <Pressable style={styles.logoutBtn} onPress={handleLogout}>
+            <Ionicons name="log-out-outline" size={20} color="#DC2626" />
+
             <Text style={styles.logoutBtnText}>Log Out</Text>
           </Pressable>
         </View>
       </ScrollView>
 
-      {/* Edit Profile Modal */}
-      <Modal visible={isEditing} animationType="slide" transparent={false}>
+      {/* =====================================================
+          EDIT MODAL
+      ===================================================== */}
+
+      <Modal
+        visible={isEditing}
+        animationType="slide"
+        presentationStyle="pageSheet"
+      >
         <SafeAreaView style={styles.screen}>
-          <View style={styles.modalHeader}>
-            <Pressable onPress={() => setIsEditing(false)}>
-              <Text style={styles.modalCancelText}>Cancel</Text>
-            </Pressable>
-            <Text style={styles.modalTitle}>Edit Profile</Text>
-            <Pressable onPress={handleSaveProfile} disabled={saving}>
-              {saving ? (
-                <ActivityIndicator size="small" color={colors.primary} />
-              ) : (
-                <Text style={styles.modalSaveText}>Save</Text>
+          <KeyboardAvoidingView
+            style={{
+              flex: 1,
+            }}
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+          >
+            <View style={styles.modalHeader}>
+              <Pressable
+                onPress={() => {
+                  setIsEditing(false);
+                  setOpenDropdown(null);
+                }}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </Pressable>
+
+              <Text style={styles.modalTitle}>Edit Profile</Text>
+
+              <Pressable onPress={handleSaveProfile} disabled={saving}>
+                {saving ? (
+                  <ActivityIndicator size="small" color={colors.primary} />
+                ) : (
+                  <Text style={styles.modalSaveText}>Save</Text>
+                )}
+              </Pressable>
+            </View>
+
+            <ScrollView
+              style={styles.modalContent}
+              contentContainerStyle={{
+                paddingBottom: 50,
+              }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              {/* BASIC */}
+
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Basic Information</Text>
+
+                <Text style={styles.sectionSub}>
+                  Keep your profile details accurate
+                </Text>
+              </View>
+
+              {renderInput("Full Name", "fullName", "Enter full name")}
+
+              {renderInput("Age", "age", "Enter age", "numeric")}
+
+              {renderDropdown(
+                "gender",
+                "Gender",
+                GENDER_OPTIONS,
+                "Select gender",
               )}
-            </Pressable>
-          </View>
 
-          <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
-            <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>Full Name</Text>
-              <TextInput
-                style={styles.input}
-                value={editForm.fullName || ""}
-                onChangeText={(text) => setEditForm((p) => ({ ...p, fullName: text }))}
-                placeholder="Enter full name"
-              />
-            </View>
+              {renderInput(
+                "Phone Number",
+                "phone",
+                "Enter phone number",
+                "phone-pad",
+              )}
 
-            <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>Age</Text>
-              <TextInput
-                style={styles.input}
-                value={editForm.age ? String(editForm.age) : ""}
-                onChangeText={(text) => setEditForm((p) => ({ ...p, age: Number(text) || "" }))}
-                keyboardType="numeric"
-                placeholder="Enter age"
-              />
-            </View>
+              {/* EMAIL */}
 
-            <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>City / Location</Text>
-              <TextInput
-                style={styles.input}
-                value={editForm.city || ""}
-                onChangeText={(text) => setEditForm((p) => ({ ...p, city: text }))}
-                placeholder="Enter city"
-              />
-            </View>
+              <View style={styles.readOnlyBox}>
+                <View style={styles.readOnlyIcon}>
+                  <Ionicons
+                    name="mail-outline"
+                    size={18}
+                    color={colors.primary}
+                  />
+                </View>
 
-            <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>Education</Text>
-              <TextInput
-                style={styles.input}
-                value={editForm.education || ""}
-                onChangeText={(text) => setEditForm((p) => ({ ...p, education: text }))}
-                placeholder="Degree / Qualification"
-              />
-            </View>
+                <View
+                  style={{
+                    flex: 1,
+                  }}
+                >
+                  <Text style={styles.readOnlyLabel}>Email</Text>
 
-            <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>Occupation</Text>
-              <TextInput
-                style={styles.input}
-                value={editForm.occupation || ""}
-                onChangeText={(text) => setEditForm((p) => ({ ...p, occupation: text }))}
-                placeholder="Current job / profession"
-              />
-            </View>
+                  <Text style={styles.readOnlyValue}>
+                    {editForm.email || "Not available"}
+                  </Text>
+                </View>
 
-            <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>Height</Text>
-              <TextInput
-                style={styles.input}
-                value={editForm.height || ""}
-                onChangeText={(text) => setEditForm((p) => ({ ...p, height: text }))}
-                placeholder="e.g. 5 ft 8 in"
-              />
-            </View>
+                <Text style={styles.readOnlyBadge}>Account</Text>
+              </View>
 
-            <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>Religion</Text>
-              <TextInput
-                style={styles.input}
-                value={editForm.religion || ""}
-                onChangeText={(text) => setEditForm((p) => ({ ...p, religion: text }))}
-                placeholder="e.g. Hindu, Sikh, Muslim"
-              />
-            </View>
+              {renderInput("City / Location", "city", "Enter city")}
 
-            <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>Community / Caste</Text>
-              <TextInput
-                style={styles.input}
-                value={editForm.community || ""}
-                onChangeText={(text) => setEditForm((p) => ({ ...p, community: text }))}
-                placeholder="e.g. Brahmin, Jat, etc."
-              />
-            </View>
+              {renderInput("Height", "height", "e.g. 5 ft 8 in")}
 
-            <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>Bio</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                value={editForm.bio || ""}
-                onChangeText={(text) => setEditForm((p) => ({ ...p, bio: text }))}
-                multiline
-                numberOfLines={3}
-                placeholder="Write a brief introduction about yourself..."
-              />
-            </View>
+              {/* EDUCATION */}
 
-            <View style={[styles.fieldGroup, { marginBottom: 40 }]}>
-              <Text style={styles.fieldLabel}>Family Details</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                value={editForm.familyDetails || ""}
-                onChangeText={(text) => setEditForm((p) => ({ ...p, familyDetails: text }))}
-                multiline
-                numberOfLines={3}
-                placeholder="Family background, members, values..."
-              />
-            </View>
-          </ScrollView>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Education & Career</Text>
+
+                <Text style={styles.sectionSub}>
+                  Add your education and profession
+                </Text>
+              </View>
+
+              {renderDropdown(
+                "education",
+                "Education",
+                EDUCATION_OPTIONS,
+                "Select education",
+              )}
+
+              {renderInput(
+                "Occupation",
+                "occupation",
+                "Current job / profession",
+              )}
+
+              {/* DASHANAM */}
+
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Dashanami Information</Text>
+
+                <Text style={styles.sectionSub}>Select your Dasha Nam</Text>
+              </View>
+
+              {renderDropdown(
+                "dashaNam",
+                "Dasha Nam",
+                DASHANAM_OPTIONS,
+                "Select Dasha Nam",
+              )}
+
+              {/* FAMILY */}
+
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Family Information</Text>
+
+                <Text style={styles.sectionSub}>
+                  These details help families connect
+                </Text>
+              </View>
+
+              {renderInput("Father Name", "fatherName", "Enter father's name")}
+
+              {renderInput("Mother Name", "motherName", "Enter mother's name")}
+
+              {renderInput(
+                "Father Mobile Number",
+                "fatherMobile",
+                "Enter father's mobile number",
+                "phone-pad",
+              )}
+
+              <View style={styles.fieldGroup}>
+                <Text style={styles.fieldLabel}>Family Details</Text>
+
+                <TextInput
+                  style={[styles.input, styles.textArea]}
+                  value={editForm.familyDetails || ""}
+                  onChangeText={(text) => updateField("familyDetails", text)}
+                  multiline
+                  numberOfLines={4}
+                  placeholder="Family background, members, values..."
+                  placeholderTextColor="#94A3B8"
+                />
+              </View>
+
+              {/* ABOUT */}
+
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>About You</Text>
+              </View>
+
+              <View
+                style={[
+                  styles.fieldGroup,
+                  {
+                    marginBottom: 30,
+                  },
+                ]}
+              >
+                <Text style={styles.fieldLabel}>Short Bio</Text>
+
+                <TextInput
+                  style={[styles.input, styles.textArea]}
+                  value={editForm.bio || ""}
+                  onChangeText={(text) => updateField("bio", text)}
+                  multiline
+                  numberOfLines={5}
+                  placeholder="Write a brief introduction about yourself..."
+                  placeholderTextColor="#94A3B8"
+                />
+              </View>
+
+              {/* SAVE */}
+
+              <Pressable
+                style={[
+                  styles.bottomSaveButton,
+                  saving && styles.disabledButton,
+                ]}
+                onPress={handleSaveProfile}
+                disabled={saving}
+              >
+                {saving ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Ionicons
+                      name="checkmark-circle-outline"
+                      size={20}
+                      color="#FFFFFF"
+                    />
+
+                    <Text style={styles.bottomSaveText}>Save Profile</Text>
+                  </>
+                )}
+              </Pressable>
+            </ScrollView>
+          </KeyboardAvoidingView>
         </SafeAreaView>
       </Modal>
     </SafeAreaView>
   );
 }
 
+/* =========================================================
+   INFO ROW
+========================================================= */
+
 function InfoRow({ label, value, icon }) {
   return (
     <View style={styles.infoRow}>
       <View style={styles.infoRowLeft}>
-        <Ionicons name={icon} size={16} color={colors.primary} style={{ marginRight: 8 }} />
+        <View style={styles.infoIcon}>
+          <Ionicons name={icon} size={16} color={colors.primary} />
+        </View>
+
         <Text style={styles.infoLabel}>{label}</Text>
       </View>
-      <Text style={styles.infoValue}>{value || "Not set"}</Text>
+
+      <Text style={styles.infoValue} numberOfLines={2}>
+        {value || "Not set"}
+      </Text>
     </View>
   );
 }
+
+/* =========================================================
+   STYLES
+========================================================= */
 
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.bg,
   },
+
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: colors.bg,
   },
+
   loadingText: {
     color: colors.muted,
     marginTop: 12,
     fontSize: 15,
   },
+
   scrollContent: {
     padding: 16,
-    paddingBottom: 40,
+    paddingBottom: 50,
   },
+
   container: {
     width: "100%",
     alignSelf: "center",
   },
+
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -564,268 +1212,483 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     paddingTop: 6,
   },
+
   title: {
     fontSize: 30,
     fontWeight: "900",
     color: colors.text,
   },
+
+  headerSub: {
+    marginTop: 3,
+    color: colors.muted,
+    fontSize: 13,
+  },
+
   editBtn: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#EFF6FF",
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingVertical: 9,
     borderRadius: 20,
-    gap: 4,
+    gap: 5,
   },
+
   editBtnText: {
     color: colors.primary,
-    fontWeight: "700",
+    fontWeight: "800",
     fontSize: 14,
   },
+
   profileHeroCard: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 20,
-    padding: 20,
+    borderRadius: 24,
+    padding: 24,
     alignItems: "center",
     marginBottom: 14,
     borderWidth: 1,
     borderColor: "#E2E8F0",
   },
+
   avatarWrapper: {
     position: "relative",
-    marginBottom: 12,
+    marginBottom: 14,
   },
+
   avatarImage: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    backgroundColor: colors.border,
+    width: 112,
+    height: 112,
+    borderRadius: 56,
+    backgroundColor: "#E2E8F0",
   },
+
   avatarFallback: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+    width: 112,
+    height: 112,
+    borderRadius: 56,
     backgroundColor: "#EFF6FF",
     justifyContent: "center",
     alignItems: "center",
   },
+
   avatarText: {
-    fontSize: 36,
+    fontSize: 42,
     fontWeight: "900",
     color: colors.primary,
   },
+
   cameraBadge: {
     position: "absolute",
-    bottom: 2,
     right: 2,
+    bottom: 3,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: colors.primary,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: "center",
     justifyContent: "center",
-    borderWidth: 2,
+    alignItems: "center",
+    borderWidth: 3,
     borderColor: "#FFFFFF",
   },
+
   userName: {
-    fontSize: 22,
+    fontSize: 23,
     fontWeight: "900",
     color: colors.text,
     textAlign: "center",
   },
+
   userHeadline: {
     fontSize: 14,
     color: colors.muted,
-    marginTop: 4,
+    marginTop: 5,
     textAlign: "center",
-    fontWeight: "500",
   },
+
   uploadPhotoTextBtn: {
-    marginTop: 10,
+    marginTop: 13,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
   },
+
   uploadPhotoText: {
-    fontSize: 12,
-    fontWeight: "700",
+    fontSize: 13,
+    fontWeight: "800",
     color: colors.primary,
   },
+
   biodataCard: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    padding: 16,
+    borderRadius: 20,
+    padding: 17,
     marginBottom: 14,
     borderWidth: 1,
     borderColor: "#E2E8F0",
   },
+
   biodataHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
   },
+
   biodataIconBox: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     backgroundColor: "#EFF6FF",
-    alignItems: "center",
     justifyContent: "center",
+    alignItems: "center",
   },
+
   biodataCardTitle: {
     fontSize: 16,
-    fontWeight: "800",
+    fontWeight: "900",
     color: colors.text,
   },
+
   biodataCardSub: {
     fontSize: 12,
     color: colors.muted,
-    marginTop: 2,
+    marginTop: 3,
   },
+
   biodataAttachedBox: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#E8F5E9",
+    backgroundColor: "#F0FDF4",
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 8,
     borderRadius: 12,
-    marginTop: 12,
-    gap: 6,
+    marginTop: 13,
+    gap: 7,
   },
+
   biodataAttachedText: {
-    color: "#2E7D32",
+    color: "#15803D",
     fontSize: 13,
     fontWeight: "700",
     flex: 1,
   },
+
   biodataUploadBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
+    height: 44,
+    borderRadius: 14,
     backgroundColor: "#EFF6FF",
-    height: 42,
-    borderRadius: 21,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 7,
     marginTop: 12,
   },
+
   biodataUploadBtnText: {
     color: colors.primary,
     fontWeight: "800",
     fontSize: 13,
   },
+
   infoCard: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 18,
+    borderRadius: 20,
     padding: 18,
     marginBottom: 14,
     borderWidth: 1,
     borderColor: "#E2E8F0",
   },
+
   infoCardTitle: {
-    fontSize: 17,
-    fontWeight: "800",
+    fontSize: 18,
+    fontWeight: "900",
     color: colors.text,
-    marginBottom: 12,
+    marginBottom: 9,
   },
+
   infoRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 8,
+    paddingVertical: 11,
     borderBottomWidth: 1,
     borderBottomColor: "#F1F5F9",
+    gap: 12,
   },
+
   infoRowLeft: {
     flexDirection: "row",
     alignItems: "center",
+    flex: 1,
   },
+
+  infoIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    backgroundColor: "#EFF6FF",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 8,
+  },
+
   infoLabel: {
-    fontSize: 14,
-    color: colors.muted,
-  },
-  infoValue: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: colors.text,
-  },
-  textSection: {
-    marginTop: 4,
-  },
-  textLabel: {
     fontSize: 13,
-    fontWeight: "700",
     color: colors.muted,
-    marginBottom: 4,
+    fontWeight: "600",
   },
+
+  infoValue: {
+    fontSize: 13,
+    color: colors.text,
+    fontWeight: "800",
+    textAlign: "right",
+    maxWidth: "55%",
+  },
+
+  familyTextBox: {
+    marginTop: 14,
+  },
+
+  familyTextLabel: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: colors.muted,
+    marginBottom: 7,
+  },
+
   textBody: {
     fontSize: 14,
     color: colors.text,
-    lineHeight: 20,
-    backgroundColor: "#FAF6F8",
-    padding: 12,
-    borderRadius: 12,
+    lineHeight: 21,
+    backgroundColor: "#F8FAFC",
+    padding: 13,
+    borderRadius: 13,
   },
+
   logoutBtn: {
     flexDirection: "row",
-    backgroundColor: "#FFEBEE",
-    height: 48,
-    borderRadius: 24,
+    backgroundColor: "#FEF2F2",
+    height: 50,
+    borderRadius: 25,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 10,
+    gap: 8,
+    marginTop: 8,
     marginBottom: 20,
   },
+
   logoutBtnText: {
-    color: "#D32F2F",
-    fontWeight: "800",
+    color: "#DC2626",
+    fontWeight: "900",
     fontSize: 15,
   },
+
   modalHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F0E6E9",
+    paddingVertical: 15,
     backgroundColor: "#FFFFFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
   },
+
   modalTitle: {
     fontSize: 18,
-    fontWeight: "800",
+    fontWeight: "900",
     color: colors.text,
   },
+
   modalCancelText: {
     color: colors.muted,
     fontSize: 15,
-    fontWeight: "600",
+    fontWeight: "700",
   },
+
   modalSaveText: {
     color: colors.primary,
     fontSize: 15,
-    fontWeight: "800",
+    fontWeight: "900",
   },
+
   modalContent: {
     padding: 20,
   },
+
+  sectionHeader: {
+    marginTop: 8,
+    marginBottom: 14,
+  },
+
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "900",
+    color: colors.text,
+  },
+
+  sectionSub: {
+    fontSize: 12,
+    color: colors.muted,
+    marginTop: 3,
+  },
+
   fieldGroup: {
     marginBottom: 16,
   },
+
   fieldLabel: {
     fontSize: 13,
-    fontWeight: "700",
+    fontWeight: "800",
     color: colors.text,
-    marginBottom: 6,
+    marginBottom: 7,
   },
+
   input: {
     backgroundColor: "#FFFFFF",
     borderWidth: 1,
-    borderColor: "#E0D0D5",
-    borderRadius: 12,
+    borderColor: "#CBD5E1",
+    borderRadius: 14,
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 12,
     fontSize: 15,
     color: colors.text,
+    minHeight: 48,
   },
+
   textArea: {
-    height: 80,
+    minHeight: 105,
     textAlignVertical: "top",
+    paddingTop: 13,
+  },
+
+  dropdownButton: {
+    minHeight: 50,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  dropdownButtonActive: {
+    borderColor: colors.primary,
+    backgroundColor: "#F8FBFF",
+  },
+
+  dropdownText: {
+    flex: 1,
+    fontSize: 15,
+    color: colors.text,
+    fontWeight: "600",
+  },
+
+  placeholderText: {
+    color: "#94A3B8",
+    fontWeight: "500",
+  },
+
+  dropdownList: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+    borderRadius: 14,
+    marginTop: 6,
+    overflow: "hidden",
+  },
+
+  dropdownItem: {
+    minHeight: 46,
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1F5F9",
+  },
+
+  dropdownItemSelected: {
+    backgroundColor: "#EFF6FF",
+  },
+
+  dropdownItemText: {
+    fontSize: 14,
+    color: colors.text,
+    fontWeight: "600",
+  },
+
+  dropdownItemTextSelected: {
+    color: colors.primary,
+    fontWeight: "800",
+  },
+
+  readOnlyBox: {
+    minHeight: 62,
+    borderRadius: 14,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+
+  readOnlyIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 11,
+    backgroundColor: "#EFF6FF",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 10,
+  },
+
+  readOnlyLabel: {
+    fontSize: 11,
+    color: colors.muted,
+    fontWeight: "700",
+  },
+
+  readOnlyValue: {
+    fontSize: 14,
+    color: colors.text,
+    fontWeight: "800",
+    marginTop: 2,
+  },
+
+  readOnlyBadge: {
+    fontSize: 10,
+    color: colors.muted,
+    backgroundColor: "#E2E8F0",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    fontWeight: "700",
+  },
+
+  bottomSaveButton: {
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: colors.primary,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginBottom: 20,
+  },
+
+  bottomSaveText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "900",
+  },
+
+  disabledButton: {
+    opacity: 0.6,
   },
 });

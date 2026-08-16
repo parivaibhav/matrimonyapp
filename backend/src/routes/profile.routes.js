@@ -4,7 +4,7 @@ import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
-import User from "../models/User.js";
+import User, { DASHANAM_OPTIONS } from "../models/User.js";
 import { auth } from "../middleware/auth.js";
 
 const router = Router();
@@ -49,63 +49,52 @@ const upload = multer({
 });
 
 /* =========================================================
-   CONSTANTS
+   EDUCATION OPTIONS
 ========================================================= */
-
-const DASHANAM_OPTIONS = [
-  "Giri",
-  "Puri",
-  "Bharati",
-  "Ashram",
-  "Saraswati",
-  "Aranya",
-  "Van",
-  "Parvat",
-  "Sagar",
-  "Tirtha",
-  "Gosai",
-];
 
 const EDUCATION_OPTIONS = [
   "10th",
   "12th",
   "Diploma",
+  "ITI",
   "B.A.",
-  "B.Com",
+  "B.Com.",
   "B.Sc.",
-  "B.B.A.",
-  "B.C.A.",
+  "BBA",
+  "BCA",
   "B.Tech",
   "B.E.",
-  "LLB",
   "MBBS",
   "BDS",
+  "LLB",
   "B.Pharm",
   "M.A.",
-  "M.Com",
+  "M.Com.",
   "M.Sc.",
-  "M.B.A.",
-  "M.C.A.",
+  "MBA",
+  "MCA",
   "M.Tech",
   "M.E.",
-  "LLM",
   "MD",
+  "MS",
+  "LLM",
   "PhD",
   "Other",
 ];
 
 /* =========================================================
    GET EDUCATION OPTIONS
-   Used by React Native autocomplete/dropdown
 ========================================================= */
 
 router.get("/options/education", auth, async (req, res) => {
   try {
-    res.json({
+    return res.json({
       options: EDUCATION_OPTIONS,
     });
-  } catch {
-    res.status(500).json({
+  } catch (error) {
+    console.error("EDUCATION OPTIONS ERROR:", error);
+
+    return res.status(500).json({
       message: "Could not load education options",
     });
   }
@@ -117,11 +106,13 @@ router.get("/options/education", auth, async (req, res) => {
 
 router.get("/options/dasha-nam", auth, async (req, res) => {
   try {
-    res.json({
+    return res.json({
       options: DASHANAM_OPTIONS,
     });
-  } catch {
-    res.status(500).json({
+  } catch (error) {
+    console.error("DASHANAM OPTIONS ERROR:", error);
+
+    return res.status(500).json({
       message: "Could not load Dasha Nam options",
     });
   }
@@ -129,25 +120,31 @@ router.get("/options/dasha-nam", auth, async (req, res) => {
 
 /* =========================================================
    GET ALL PROFILES
-   Discover / Search
 ========================================================= */
 
 router.get("/", auth, async (req, res) => {
   try {
-    const { gender, search, city, religion, community } = req.query;
+    const { gender, search, city, dashaNam } = req.query;
 
     const filter = {
       _id: {
         $ne: req.userId,
       },
 
-      // Only show completed profiles
       profileCompleted: true,
     };
+
+    /* -------------------------------------------------------
+       GENDER
+    ------------------------------------------------------- */
 
     if (gender && ["Male", "Female"].includes(gender)) {
       filter.gender = gender;
     }
+
+    /* -------------------------------------------------------
+       NAME SEARCH
+    ------------------------------------------------------- */
 
     if (search) {
       filter.fullName = {
@@ -156,6 +153,10 @@ router.get("/", auth, async (req, res) => {
       };
     }
 
+    /* -------------------------------------------------------
+       CITY
+    ------------------------------------------------------- */
+
     if (city) {
       filter.city = {
         $regex: city,
@@ -163,19 +164,17 @@ router.get("/", auth, async (req, res) => {
       };
     }
 
-    if (religion) {
-      filter.religion = {
-        $regex: religion,
-        $options: "i",
-      };
+    /* -------------------------------------------------------
+       DASHANAM
+    ------------------------------------------------------- */
+
+    if (dashaNam && DASHANAM_OPTIONS.includes(dashaNam)) {
+      filter.dashaNam = dashaNam;
     }
 
-    if (community) {
-      filter.community = {
-        $regex: community,
-        $options: "i",
-      };
-    }
+    /* -------------------------------------------------------
+       GET USERS
+    ------------------------------------------------------- */
 
     const users = await User.find(filter)
       .select("-passwordHash")
@@ -184,18 +183,18 @@ router.get("/", auth, async (req, res) => {
       })
       .limit(50);
 
-    res.json(users);
+    return res.json(users);
   } catch (error) {
     console.error("LOAD PROFILES ERROR:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       message: "Could not load profiles",
     });
   }
 });
 
 /* =========================================================
-   GET CURRENT LOGGED-IN USER
+   GET CURRENT USER
 ========================================================= */
 
 router.get("/me/current", auth, async (req, res) => {
@@ -208,18 +207,18 @@ router.get("/me/current", auth, async (req, res) => {
       });
     }
 
-    res.json(user);
+    return res.json(user);
   } catch (error) {
     console.error("LOAD CURRENT USER ERROR:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       message: "Could not load user profile",
     });
   }
 });
 
 /* =========================================================
-   UPDATE / COMPLETE CURRENT PROFILE
+   UPDATE CURRENT PROFILE
 ========================================================= */
 
 router.put("/me", auth, async (req, res) => {
@@ -233,9 +232,7 @@ router.put("/me", auth, async (req, res) => {
       occupation,
       city,
       height,
-      religion,
       dashaNam,
-      community,
       fatherName,
       motherName,
       fatherMobile,
@@ -245,8 +242,8 @@ router.put("/me", auth, async (req, res) => {
     } = req.body;
 
     /* -----------------------------------------------------
-       REQUIRED PROFILE FIELDS
-    ----------------------------------------------------- */
+         FULL NAME
+      ----------------------------------------------------- */
 
     if (!fullName?.trim()) {
       return res.status(400).json({
@@ -254,7 +251,11 @@ router.put("/me", auth, async (req, res) => {
       });
     }
 
-    if (!age) {
+    /* -----------------------------------------------------
+         AGE
+      ----------------------------------------------------- */
+
+    if (age === undefined || age === null || age === "") {
       return res.status(400).json({
         message: "Age is required.",
       });
@@ -268,11 +269,19 @@ router.put("/me", auth, async (req, res) => {
       });
     }
 
+    /* -----------------------------------------------------
+         GENDER
+      ----------------------------------------------------- */
+
     if (!gender || !["Male", "Female"].includes(gender)) {
       return res.status(400).json({
         message: "Valid gender is required.",
       });
     }
+
+    /* -----------------------------------------------------
+         PHONE
+      ----------------------------------------------------- */
 
     if (!phone?.trim()) {
       return res.status(400).json({
@@ -281,11 +290,13 @@ router.put("/me", auth, async (req, res) => {
     }
 
     /* -----------------------------------------------------
-       PHONE CHECK
-    ----------------------------------------------------- */
+         PHONE DUPLICATE CHECK
+      ----------------------------------------------------- */
+
+    const cleanPhone = phone.trim();
 
     const existingPhone = await User.findOne({
-      phone: phone.trim(),
+      phone: cleanPhone,
       _id: {
         $ne: req.userId,
       },
@@ -298,8 +309,18 @@ router.put("/me", auth, async (req, res) => {
     }
 
     /* -----------------------------------------------------
-       DASHANAM VALIDATION
-    ----------------------------------------------------- */
+         EDUCATION
+      ----------------------------------------------------- */
+
+    if (education && !EDUCATION_OPTIONS.includes(education)) {
+      return res.status(400).json({
+        message: "Invalid education selected.",
+      });
+    }
+
+    /* -----------------------------------------------------
+         DASHANAM
+      ----------------------------------------------------- */
 
     if (dashaNam && !DASHANAM_OPTIONS.includes(dashaNam)) {
       return res.status(400).json({
@@ -308,8 +329,8 @@ router.put("/me", auth, async (req, res) => {
     }
 
     /* -----------------------------------------------------
-       INTERESTS
-    ----------------------------------------------------- */
+         INTERESTS
+      ----------------------------------------------------- */
 
     let interestsArray = [];
 
@@ -325,14 +346,17 @@ router.put("/me", auth, async (req, res) => {
     }
 
     /* -----------------------------------------------------
-       UPDATE
-    ----------------------------------------------------- */
+         UPDATE DATA
+      ----------------------------------------------------- */
 
     const updates = {
       fullName: fullName.trim(),
+
       age: numericAge,
+
       gender,
-      phone: phone.trim(),
+
+      phone: cleanPhone,
 
       education: education?.trim() || "",
 
@@ -342,11 +366,7 @@ router.put("/me", auth, async (req, res) => {
 
       height: height?.trim() || "",
 
-      religion: religion?.trim() || "",
-
-      dashaNam: dashaNam || "",
-
-      community: community?.trim() || "",
+      dashaNam: dashaNam?.trim() || "",
 
       fatherName: fatherName?.trim() || "",
 
@@ -354,14 +374,18 @@ router.put("/me", auth, async (req, res) => {
 
       fatherMobile: fatherMobile?.trim() || "",
 
-      bio: bio?.trim() || "",
-
       familyDetails: familyDetails?.trim() || "",
+
+      bio: bio?.trim() || "",
 
       interests: interestsArray,
 
       profileCompleted: true,
     };
+
+    /* -----------------------------------------------------
+         SAVE
+      ----------------------------------------------------- */
 
     const updatedUser = await User.findByIdAndUpdate(req.userId, updates, {
       new: true,
@@ -374,14 +398,14 @@ router.put("/me", auth, async (req, res) => {
       });
     }
 
-    res.json({
-      message: "Profile completed successfully.",
+    return res.json({
+      message: "Profile updated successfully.",
       user: updatedUser,
     });
   } catch (error) {
     console.error("PROFILE UPDATE ERROR:", error);
 
-    res.status(400).json({
+    return res.status(400).json({
       message: error.message || "Failed to update profile",
     });
   }
@@ -417,15 +441,17 @@ router.post("/me/photo", auth, upload.single("photo"), async (req, res) => {
       });
     }
 
-    res.json({
+    return res.json({
       message: "Profile photo uploaded successfully.",
+
       profilePhoto: photoRelativePath,
+
       user: updatedUser,
     });
   } catch (error) {
     console.error("PHOTO UPLOAD ERROR:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       message: "Failed to upload profile photo",
     });
   }
@@ -461,15 +487,17 @@ router.post("/me/biodata", auth, upload.single("biodata"), async (req, res) => {
       });
     }
 
-    res.json({
+    return res.json({
       message: "Biodata document uploaded successfully.",
+
       biodataUrl: biodataRelativePath,
+
       user: updatedUser,
     });
   } catch (error) {
     console.error("BIODATA UPLOAD ERROR:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       message: "Failed to upload biodata",
     });
   }
@@ -489,9 +517,11 @@ router.get("/:id", auth, async (req, res) => {
       });
     }
 
-    res.json(user);
+    return res.json(user);
   } catch (error) {
-    res.status(400).json({
+    console.error("GET PROFILE ERROR:", error);
+
+    return res.status(400).json({
       message: "Invalid profile id",
     });
   }

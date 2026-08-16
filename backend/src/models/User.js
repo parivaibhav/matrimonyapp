@@ -16,9 +16,9 @@ const DASHANAM_OPTIONS = [
 
 const userSchema = new mongoose.Schema(
   {
-    // =========================
+    // =========================================================
     // ACCOUNT DETAILS
-    // =========================
+    // =========================================================
 
     email: {
       type: String,
@@ -33,9 +33,9 @@ const userSchema = new mongoose.Schema(
       required: true,
     },
 
-    // =========================
+    // =========================================================
     // PROFILE DETAILS
-    // =========================
+    // =========================================================
 
     profilePhoto: {
       type: String,
@@ -90,28 +90,20 @@ const userSchema = new mongoose.Schema(
       trim: true,
     },
 
-    religion: {
-      type: String,
-      default: "",
-      trim: true,
-    },
+    // =========================================================
+    // DASHANAMI DETAILS
+    // =========================================================
 
-    // Dasha Nam / Dashanami
     dashaNam: {
       type: String,
       enum: DASHANAM_OPTIONS,
       default: "",
-    },
-
-    community: {
-      type: String,
-      default: "",
       trim: true,
     },
 
-    // =========================
+    // =========================================================
     // FAMILY DETAILS
-    // =========================
+    // =========================================================
 
     fatherName: {
       type: String,
@@ -137,9 +129,9 @@ const userSchema = new mongoose.Schema(
       trim: true,
     },
 
-    // =========================
+    // =========================================================
     // OTHER PROFILE DETAILS
-    // =========================
+    // =========================================================
 
     bio: {
       type: String,
@@ -157,9 +149,9 @@ const userSchema = new mongoose.Schema(
       default: [],
     },
 
-    // =========================
+    // =========================================================
     // PROFILE STATUS
-    // =========================
+    // =========================================================
 
     profileCompleted: {
       type: Boolean,
