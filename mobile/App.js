@@ -1,7 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  SafeAreaProvider,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
@@ -15,6 +18,7 @@ import InterestsScreen from "./src/screens/InterestsScreen";
 import ProfileScreen from "./src/screens/ProfileScreen";
 import ProfileDetailScreen from "./src/screens/ProfileDetailScreen";
 import NotificationsScreen from "./src/screens/NotificationsScreen";
+
 import { colors } from "./src/theme";
 import { useResponsiveLayout } from "./src/utils/responsive";
 
@@ -25,18 +29,26 @@ function MainTabs({ setLoggedIn }) {
   const insets = useSafeAreaInsets();
   const { isSmallPhone } = useResponsiveLayout();
 
-  // Dynamic bottom inset and height calculation for all mobile screens & tablets
+  // Bottom safe-area inset
   const bottomInset = Math.max(insets.bottom, 6);
-  const tabHeight = (isSmallPhone ? 54 : 58) + (insets.bottom > 0 ? insets.bottom - 4 : 0);
+
+  // Dynamic tab height
+  const tabHeight =
+    (isSmallPhone ? 54 : 58) + (insets.bottom > 0 ? insets.bottom - 4 : 0);
 
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
+
+        // Tab colors
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: "#8E8E93",
+
+        // Hide tab bar when keyboard opens
         tabBarHideOnKeyboard: true,
 
+        // Tab label
         tabBarLabelStyle: {
           fontSize: isSmallPhone ? 10 : 11,
           fontWeight: "600",
@@ -44,33 +56,44 @@ function MainTabs({ setLoggedIn }) {
           marginBottom: insets.bottom > 0 ? 0 : 4,
         },
 
+        // Tab bar
         tabBarStyle: {
           height: tabHeight,
           paddingTop: 6,
+          // paddingBottom: 10,
           paddingBottom: bottomInset,
           backgroundColor: "#FFFFFF",
           borderTopWidth: 1,
           borderTopColor: "#F0E7EA",
           elevation: 0,
+          borderRadius: 30,
+          marginBottom: 10,
+          marginHorizontal: 10,
         },
 
+        // Tab icons
         tabBarIcon: ({ focused, color }) => {
           let iconName;
 
           if (route.name === "Home") {
             iconName = focused ? "home" : "home-outline";
-          } else if (route.name === "Search") {
-            iconName = focused ? "search" : "search-outline";
           } else if (route.name === "Interests") {
             iconName = focused ? "heart" : "heart-outline";
           } else if (route.name === "Profile") {
             iconName = focused ? "person" : "person-outline";
           }
 
-          return <Ionicons name={iconName} size={isSmallPhone ? 22 : 24} color={color} />;
+          return (
+            <Ionicons
+              name={iconName}
+              size={isSmallPhone ? 22 : 24}
+              color={color}
+            />
+          );
         },
       })}
     >
+      {/* ================= HOME TAB ================= */}
       <Tab.Screen
         name="Home"
         component={HomeScreen}
@@ -79,14 +102,7 @@ function MainTabs({ setLoggedIn }) {
         }}
       />
 
-      <Tab.Screen
-        name="Search"
-        component={SearchScreen}
-        options={{
-          title: "Search",
-        }}
-      />
-
+      {/* ================= INTERESTS TAB ================= */}
       <Tab.Screen
         name="Interests"
         component={InterestsScreen}
@@ -95,6 +111,7 @@ function MainTabs({ setLoggedIn }) {
         }}
       />
 
+      {/* ================= PROFILE TAB ================= */}
       <Tab.Screen
         name="Profile"
         options={{
@@ -117,12 +134,16 @@ export default function App() {
   async function checkLogin() {
     try {
       const token = await AsyncStorage.getItem("token");
+
       setLoggedIn(!!token);
     } catch (error) {
       console.log("AUTH CHECK ERROR:", error);
+
       setLoggedIn(false);
     }
   }
+
+  // ================= AUTH CHECK LOADING =================
 
   if (loggedIn === null) {
     return (
@@ -151,22 +172,39 @@ export default function App() {
         >
           {!loggedIn ? (
             <>
+              {/* ================= LOGIN ================= */}
+
               <Stack.Screen name="Login">
-                {(props) => <LoginScreen {...props} setLoggedIn={setLoggedIn} />}
+                {(props) => (
+                  <LoginScreen {...props} setLoggedIn={setLoggedIn} />
+                )}
               </Stack.Screen>
+
+              {/* ================= SIGNUP ================= */}
 
               <Stack.Screen name="Signup" component={SignupScreen} />
             </>
           ) : (
             <>
+              {/* ================= MAIN TABS ================= */}
+
               <Stack.Screen name="Main">
                 {(props) => <MainTabs {...props} setLoggedIn={setLoggedIn} />}
               </Stack.Screen>
+
+              {/* ================= SEARCH ================= */}
+              {/* Search is a Stack screen, NOT a bottom tab */}
+
+              <Stack.Screen name="Search" component={SearchScreen} />
+
+              {/* ================= PROFILE DETAIL ================= */}
 
               <Stack.Screen
                 name="ProfileDetail"
                 component={ProfileDetailScreen}
               />
+
+              {/* ================= NOTIFICATIONS ================= */}
 
               <Stack.Screen
                 name="Notifications"

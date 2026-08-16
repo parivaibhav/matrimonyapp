@@ -1,115 +1,153 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import multer from "multer";
-import path from "path";
-import fs from "fs";
 import User from "../models/User.js";
 
 const router = Router();
 
-const uploadDir = path.resolve("uploads");
-fs.mkdirSync(uploadDir, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: (_, __, cb) => cb(null, uploadDir),
-  filename: (_, file, cb) => {
-    const ext = path.extname(file.originalname || ".jpg");
-    cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`);
-  }
-});
-
-const upload = multer({
-  storage,
-  limits: { fileSize: 5 * 1024 * 1024 }
-});
+/* =========================================================
+   JWT
+========================================================= */
 
 function signToken(userId) {
-  return jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: "7d" });
+  return jwt.sign({ userId }, process.env.JWT_SECRET, {
+    expiresIn: "7d",
+  });
 }
 
-router.post("/signup", upload.single("profilePhoto"), async (req, res) => {
-  try {
-    const {
-      fullName, gender, age, phone, email, password,
-      education, occupation, city, height, religion,
-      community, bio, familyDetails, interests
-    } = req.body;
+/* =========================================================
+   SIGNUP
+   Email + Password only
+========================================================= */
 
-    if (!fullName || !gender || !age || !phone || !email || !password) {
-      return res.status(400).json({ message: "Required fields are missing" });
+router.post("/signup", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    // Required fields
+    if (!email || !password) {
+      return res.status(400).json({
+        message: "Email and password are required.",
+      });
     }
 
+    const normalizedEmail = String(email).trim().toLowerCase();
+
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!emailRegex.test(normalizedEmail)) {
+      return res.status(400).json({
+        message: "Please enter a valid email address.",
+      });
+    }
+
+    // Password validation
+    if (String(password).length < 6) {
+      return res.status(400).json({
+        message: "Password must contain at least 6 characters.",
+      });
+    }
+
+    // Check existing email
     const exists = await User.findOne({
-      $or: [{ email: email.toLowerCase() }, { phone }]
+      email: normalizedEmail,
     });
 
     if (exists) {
-      return res.status(409).json({ message: "Email or phone already registered" });
+      return res.status(409).json({
+        message: "Email already registered.",
+      });
     }
 
+    // Hash password
     const passwordHash = await bcrypt.hash(password, 12);
 
+    // Create account
     const user = await User.create({
-      fullName,
-      gender,
-      age: Number(age),
-      phone,
-      email: email.toLowerCase(),
+      email: normalizedEmail,
       passwordHash,
-      education,
-      occupation,
-      city,
-      height,
-      religion,
-      community,
-      bio,
-      familyDetails,
-      interests: typeof interests === "string"
-        ? interests.split(",").map(x => x.trim()).filter(Boolean)
-        : [],
-      profilePhoto: req.file ? `/uploads/${req.file.filename}` : ""
+
+      // Profile will be completed later
+      profileCompleted: false,
     });
 
     const token = signToken(user._id.toString());
 
-    res.status(201).json({
+    return res.status(201).json({
+      message: "Account created successfully.",
       token,
-      user: sanitize(user)
+      user: sanitize(user),
     });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Signup failed" });
+    console.error("SIGNUP ERROR:", error);
+
+    return res.status(500).json({
+      message: "Signup failed.",
+    });
   }
 });
+
+/* =========================================================
+   LOGIN
+   Email + Password
+========================================================= */
 
 router.post("/login", async (req, res) => {
   try {
-    const { identifier, password } = req.body;
+    const { identifier, email, password } = req.body;
+
+    // Support both:
+    // { identifier, password }
+    // and
+    // { email, password }
+
+    const loginEmail = identifier || email;
+
+    if (!loginEmail || !password) {
+      return res.status(400).json({
+        message: "Email and password are required.",
+      });
+    }
+
+    const normalizedEmail = String(loginEmail).trim().toLowerCase();
 
     const user = await User.findOne({
-      $or: [
-        { email: String(identifier).toLowerCase() },
-        { phone: identifier }
-      ]
+      email: normalizedEmail,
     });
 
     if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
-      return res.status(401).json({ message: "Invalid email/phone or password" });
+      return res.status(401).json({
+        message: "Invalid email or password.",
+      });
     }
 
-    res.json({
-      token: signToken(user._id.toString()),
-      user: sanitize(user)
+    const token = signToken(user._id.toString());
+
+    return res.json({
+      message: "Login successful.",
+      token,
+      user: sanitize(user),
     });
-  } catch {
-    res.status(500).json({ message: "Login failed" });
+  } catch (error) {
+    console.error("LOGIN ERROR:", error);
+
+    return res.status(500).json({
+      message: "Login failed.",
+    });
   }
 });
 
+/* =========================================================
+   SANITIZE USER
+   Never send passwordHash to mobile app
+========================================================= */
+
 function sanitize(user) {
-  const obj = user.toObject ? user.toObject() : user;
+  const obj = user.toObject ? user.toObject() : { ...user };
+
   delete obj.passwordHash;
+
   return obj;
 }
 

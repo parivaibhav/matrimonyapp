@@ -5,7 +5,11 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "plugins": ["expo-image-picker"],
+    "plugins": [
+      "expo-image-picker",
+      "@react-native-firebase/app",
+      "@react-native-firebase/auth"
+    ],
     "android": {
       "package": "com.example.matrimony"
     }
