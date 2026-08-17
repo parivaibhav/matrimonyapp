@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -9,10 +9,12 @@ import {
   Text,
   View,
 } from "react-native";
+
 import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
+
 import { Ionicons } from "@expo/vector-icons";
 
 import { api, imageUrl } from "../api";
@@ -20,9 +22,10 @@ import { colors } from "../theme";
 import { useResponsiveLayout } from "../utils/responsive";
 
 export default function ProfileDetailScreen({ route, navigation }) {
-  const { profileId } = route.params;
+  const { profileId } = route.params || {};
 
   const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [sent, setSent] = useState(false);
   const [sending, setSending] = useState(false);
 
@@ -35,21 +38,50 @@ export default function ProfileDetailScreen({ route, navigation }) {
   // ==========================================================
 
   useEffect(() => {
+    if (!profileId) {
+      Alert.alert("Profile Error", "Profile ID is missing.", [
+        {
+          text: "Go Back",
+          onPress: () => navigation.goBack(),
+        },
+      ]);
+
+      return;
+    }
+
     loadProfileDetails();
   }, [profileId]);
 
   async function loadProfileDetails() {
     try {
-      const { data } = await api.get(`/profiles/${profileId}`);
+      setLoading(true);
 
-      setProfile(data);
+      console.log("LOADING PROFILE:", profileId);
+
+      const response = await api.get(`/profiles/${profileId}`);
+
+      console.log("PROFILE DETAIL RESPONSE:", response.data);
+
+      setProfile(response.data);
     } catch (error) {
-      console.log("Error loading profile:", error);
+      console.log(
+        "PROFILE DETAIL ERROR:",
+        error?.response?.data || error?.message || error,
+      );
 
       Alert.alert(
         "Unable to Load",
-        "Could not load this profile. Please try again.",
+        error?.response?.data?.message ||
+          "Could not load this profile. Please try again.",
+        [
+          {
+            text: "Go Back",
+            onPress: () => navigation.goBack(),
+          },
+        ],
       );
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -58,23 +90,30 @@ export default function ProfileDetailScreen({ route, navigation }) {
   // ==========================================================
 
   async function sendInterest() {
-    if (sent || sending) return;
+    if (!profile?._id || sent || sending) {
+      return;
+    }
 
     try {
       setSending(true);
 
-      await api.post(`/interests/${profileId}`);
+      console.log("SENDING INTEREST TO:", profile._id);
+
+      await api.post(`/interests/${profile._id}`);
 
       setSent(true);
 
       Alert.alert(
         "Interest Sent 🎉",
-        `Your interest has been sent to ${
-          profile?.fullName || "this profile"
-        }.`,
+        `Your interest has been sent to ${profile.fullName || "this profile"}.`,
       );
     } catch (error) {
-      if (error.response?.status === 409) {
+      console.log(
+        "SEND INTEREST ERROR:",
+        error?.response?.data || error?.message || error,
+      );
+
+      if (error?.response?.status === 409) {
         setSent(true);
 
         Alert.alert(
@@ -84,7 +123,7 @@ export default function ProfileDetailScreen({ route, navigation }) {
       } else {
         Alert.alert(
           "Something went wrong",
-          error.response?.data?.message ||
+          error?.response?.data?.message ||
             "Could not send interest. Please try again.",
         );
       }
@@ -94,10 +133,37 @@ export default function ProfileDetailScreen({ route, navigation }) {
   }
 
   // ==========================================================
+  // IMAGE
+  // ==========================================================
+
+  const profileImage = useMemo(() => {
+    if (!profile?.profilePhoto) {
+      return null;
+    }
+
+    try {
+      return imageUrl(profile.profilePhoto);
+    } catch (error) {
+      console.log("IMAGE URL ERROR:", error);
+      return null;
+    }
+  }, [profile?.profilePhoto]);
+
+  // ==========================================================
+  // RESPONSIVE
+  // ==========================================================
+
+  const heroHeight = isTablet ? 560 : isSmallPhone ? 370 : 450;
+
+  const horizontalPadding = isTablet ? 28 : isSmallPhone ? 14 : 16;
+
+  const bottomBarPadding = Math.max(insets.bottom, 12);
+
+  // ==========================================================
   // LOADING
   // ==========================================================
 
-  if (!profile) {
+  if (loading) {
     return (
       <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
         <ProfileSkeleton isSmallPhone={isSmallPhone} isTablet={isTablet} />
@@ -106,14 +172,39 @@ export default function ProfileDetailScreen({ route, navigation }) {
   }
 
   // ==========================================================
-  // RESPONSIVE VALUES
+  // NO PROFILE
   // ==========================================================
 
-  const heroHeight = isTablet ? 560 : isSmallPhone ? 370 : 450;
+  if (!profile) {
+    return (
+      <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
+        <View style={styles.errorScreen}>
+          <View style={styles.errorIcon}>
+            <Ionicons name="person-outline" size={34} color={colors.primary} />
+          </View>
 
-  const horizontalPadding = isTablet ? 28 : isSmallPhone ? 14 : 16;
+          <Text style={styles.errorTitle}>Profile not found</Text>
 
-  const bottomBarPadding = Math.max(insets.bottom, 12);
+          <Text style={styles.errorText}>
+            This profile may have been removed or is no longer available.
+          </Text>
+
+          <Pressable
+            onPress={() => navigation.goBack()}
+            style={styles.errorButton}
+          >
+            <Ionicons name="arrow-back" size={18} color="#FFFFFF" />
+
+            <Text style={styles.errorButtonText}>Go Back</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // ==========================================================
+  // MAIN UI
+  // ==========================================================
 
   return (
     <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
@@ -123,7 +214,7 @@ export default function ProfileDetailScreen({ route, navigation }) {
           contentContainerStyle={[
             styles.scrollContent,
             {
-              paddingBottom: 90 + bottomBarPadding,
+              paddingBottom: 100 + bottomBarPadding,
             },
           ]}
         >
@@ -136,7 +227,7 @@ export default function ProfileDetailScreen({ route, navigation }) {
             ]}
           >
             {/* ==================================================
-                PROFILE IMAGE
+                HERO IMAGE
             ================================================== */}
 
             <View
@@ -149,15 +240,37 @@ export default function ProfileDetailScreen({ route, navigation }) {
                 },
               ]}
             >
-              <Image
-                source={{
-                  uri: imageUrl(profile.profilePhoto),
-                }}
-                style={styles.heroImage}
-                resizeMode="cover"
-              />
+              {profileImage ? (
+                <Image
+                  source={{
+                    uri: profileImage,
+                  }}
+                  style={styles.heroImage}
+                  resizeMode="cover"
+                  onError={(error) => {
+                    console.log(
+                      "PROFILE IMAGE ERROR:",
+                      error?.nativeEvent?.error,
+                    );
+                  }}
+                />
+              ) : (
+                <View style={styles.imagePlaceholder}>
+                  <View style={styles.imagePlaceholderIcon}>
+                    <Ionicons name="person" size={70} color="#94A3B8" />
+                  </View>
 
-              {/* BACK BUTTON */}
+                  <Text style={styles.imagePlaceholderText}>
+                    No profile photo
+                  </Text>
+                </View>
+              )}
+
+              {/* IMAGE OVERLAY */}
+
+              <View style={styles.heroOverlay} />
+
+              {/* BACK */}
 
               <Pressable
                 onPress={() => navigation.goBack()}
@@ -173,8 +286,6 @@ export default function ProfileDetailScreen({ route, navigation }) {
 
             {/* ==================================================
                 PROFILE HEADER
-                Only basic information here.
-                No duplicated details.
             ================================================== */}
 
             <View
@@ -187,51 +298,53 @@ export default function ProfileDetailScreen({ route, navigation }) {
             >
               {/* NAME */}
 
-              <Text
-                style={[styles.name, isSmallPhone && styles.nameSmall]}
-                numberOfLines={2}
-              >
-                {profile.fullName || "Profile"}
-                {profile.age ? `, ${profile.age}` : ""}
-              </Text>
+              <View style={styles.nameRow}>
+                <Text
+                  style={[styles.name, isSmallPhone && styles.nameSmall]}
+                  numberOfLines={2}
+                >
+                  {profile.fullName || "Profile"}
+
+                  {profile.age ? `, ${profile.age}` : ""}
+                </Text>
+              </View>
 
               {/* LOCATION */}
 
-              {profile.city && (
+              {profile.city ? (
                 <View style={styles.locationRow}>
-                  <Ionicons
-                    name="location-outline"
-                    size={16}
-                    color={colors.muted}
-                  />
+                  <View style={styles.locationIcon}>
+                    <Ionicons
+                      name="location-outline"
+                      size={15}
+                      color={colors.primary}
+                    />
+                  </View>
 
                   <Text style={styles.locationText} numberOfLines={1}>
                     {profile.city}
                   </Text>
                 </View>
-              )}
+              ) : null}
 
-              {/* OCCUPATION */}
+              {/* QUICK INFO */}
 
-              {profile.occupation && (
-                <View style={styles.occupationRow}>
-                  <View style={styles.occupationIcon}>
-                    <Ionicons
-                      name="briefcase-outline"
-                      size={17}
-                      color={colors.primary}
-                    />
-                  </View>
+              <View style={styles.quickInfoRow}>
+                {profile.gender ? (
+                  <QuickInfo
+                    icon={
+                      profile.gender === "Male"
+                        ? "male-outline"
+                        : "female-outline"
+                    }
+                    text={profile.gender}
+                  />
+                ) : null}
 
-                  <View style={styles.occupationContent}>
-                    <Text style={styles.occupationLabel}>Profession</Text>
-
-                    <Text style={styles.occupationText} numberOfLines={2}>
-                      {profile.occupation}
-                    </Text>
-                  </View>
-                </View>
-              )}
+                {profile.education ? (
+                  <QuickInfo icon="school-outline" text={profile.education} />
+                ) : null}
+              </View>
             </View>
 
             {/* ==================================================
@@ -259,9 +372,6 @@ export default function ProfileDetailScreen({ route, navigation }) {
 
               {/* ==================================================
                   PROFILE DETAILS
-                  
-                  All personal/professional details are shown
-                  ONLY HERE so they don't repeat.
               ================================================== */}
 
               <ModernSection
@@ -276,21 +386,15 @@ export default function ProfileDetailScreen({ route, navigation }) {
                   />
 
                   <DetailItem
+                    icon="calendar-outline"
+                    label="Age"
+                    value={profile.age ? `${profile.age} years` : ""}
+                  />
+
+                  <DetailItem
                     icon="resize-outline"
                     label="Height"
                     value={profile.height}
-                  />
-
-                  <DetailItem
-                    icon="book-outline"
-                    label="Religion"
-                    value={profile.religion}
-                  />
-
-                  <DetailItem
-                    icon="people-outline"
-                    label="Community"
-                    value={profile.community}
                   />
 
                   <DetailItem
@@ -310,11 +414,63 @@ export default function ProfileDetailScreen({ route, navigation }) {
                     label="Location"
                     value={profile.city}
                   />
+
+                  <DetailItem
+                    icon="people-outline"
+                    label="Dasha Nam"
+                    value={profile.dashaNam}
+                  />
                 </View>
               </ModernSection>
 
               {/* ==================================================
-                  INTERESTS & HOBBIES
+                  FAMILY
+              ================================================== */}
+
+              {(profile.fatherName ||
+                profile.motherName ||
+                profile.familyDetails) && (
+                <ModernSection icon="people-outline" title="Family Details">
+                  <View style={styles.familyList}>
+                    {profile.fatherName ? (
+                      <FamilyItem
+                        icon="man-outline"
+                        label="Father"
+                        value={profile.fatherName}
+                      />
+                    ) : null}
+
+                    {profile.motherName ? (
+                      <FamilyItem
+                        icon="woman-outline"
+                        label="Mother"
+                        value={profile.motherName}
+                      />
+                    ) : null}
+
+                    {profile.fatherMobile ? (
+                      <FamilyItem
+                        icon="call-outline"
+                        label="Father Mobile"
+                        value={profile.fatherMobile}
+                      />
+                    ) : null}
+                  </View>
+
+                  {profile.familyDetails ? (
+                    <View style={styles.familyDescription}>
+                      <Text style={styles.familyDescriptionLabel}>Family</Text>
+
+                      <Text style={styles.familyDescriptionText}>
+                        {profile.familyDetails}
+                      </Text>
+                    </View>
+                  ) : null}
+                </ModernSection>
+              )}
+
+              {/* ==================================================
+                  INTERESTS
               ================================================== */}
 
               {Array.isArray(profile.interests) &&
@@ -343,23 +499,51 @@ export default function ProfileDetailScreen({ route, navigation }) {
                 )}
 
               {/* ==================================================
-                  CONNECT CARD
+                  BIODATA
+              ================================================== */}
+
+              {profile.biodataUrl ? (
+                <ModernSection icon="document-text-outline" title="Biodata">
+                  <View style={styles.biodataCard}>
+                    <View style={styles.biodataIcon}>
+                      <Ionicons
+                        name="document-text-outline"
+                        size={22}
+                        color={colors.primary}
+                      />
+                    </View>
+
+                    <View style={styles.biodataContent}>
+                      <Text style={styles.biodataTitle}>Biodata available</Text>
+
+                      <Text style={styles.biodataText}>
+                        This profile has uploaded a biodata document.
+                      </Text>
+                    </View>
+                  </View>
+                </ModernSection>
+              ) : null}
+
+              {/* ==================================================
+                  CONNECT
               ================================================== */}
 
               <View style={styles.connectionCard}>
                 <View style={styles.connectionIcon}>
                   <Ionicons
-                    name="chatbubble-ellipses-outline"
-                    size={20}
+                    name="heart-outline"
+                    size={22}
                     color={colors.primary}
                   />
                 </View>
 
                 <View style={styles.connectionContent}>
-                  <Text style={styles.connectionTitle}>Want to connect?</Text>
+                  <Text style={styles.connectionTitle}>
+                    Interested in this profile?
+                  </Text>
 
                   <Text style={styles.connectionText}>
-                    Send an interest to start a connection.
+                    Send an interest to start a meaningful connection.
                   </Text>
                 </View>
               </View>
@@ -402,8 +586,8 @@ export default function ProfileDetailScreen({ route, navigation }) {
               ) : (
                 <>
                   <Ionicons
-                    name={sent ? "checkmark-circle" : "paper-plane-outline"}
-                    size={20}
+                    name={sent ? "checkmark-circle" : "heart-outline"}
+                    size={21}
                     color="#FFFFFF"
                   />
 
@@ -421,6 +605,22 @@ export default function ProfileDetailScreen({ route, navigation }) {
         </View>
       </View>
     </SafeAreaView>
+  );
+}
+
+// ============================================================
+// QUICK INFO
+// ============================================================
+
+function QuickInfo({ icon, text }) {
+  return (
+    <View style={styles.quickInfo}>
+      <Ionicons name={icon} size={15} color={colors.primary} />
+
+      <Text style={styles.quickInfoText} numberOfLines={1}>
+        {text}
+      </Text>
+    </View>
   );
 }
 
@@ -449,6 +649,10 @@ function ModernSection({ icon, title, children }) {
 // ============================================================
 
 function DetailItem({ icon, label, value }) {
+  if (!value) {
+    return null;
+  }
+
   return (
     <View style={styles.detailItem}>
       <View style={styles.detailIcon}>
@@ -459,7 +663,7 @@ function DetailItem({ icon, label, value }) {
         <Text style={styles.detailLabel}>{label}</Text>
 
         <Text style={styles.detailValue} numberOfLines={2}>
-          {value || "Not specified"}
+          {value}
         </Text>
       </View>
     </View>
@@ -467,7 +671,27 @@ function DetailItem({ icon, label, value }) {
 }
 
 // ============================================================
-// SKELETON LOADING
+// FAMILY ITEM
+// ============================================================
+
+function FamilyItem({ icon, label, value }) {
+  return (
+    <View style={styles.familyItem}>
+      <View style={styles.familyIcon}>
+        <Ionicons name={icon} size={18} color={colors.primary} />
+      </View>
+
+      <View style={styles.familyContent}>
+        <Text style={styles.familyLabel}>{label}</Text>
+
+        <Text style={styles.familyValue}>{value}</Text>
+      </View>
+    </View>
+  );
+}
+
+// ============================================================
+// SKELETON
 // ============================================================
 
 function ProfileSkeleton({ isSmallPhone, isTablet }) {
@@ -478,8 +702,6 @@ function ProfileSkeleton({ isSmallPhone, isTablet }) {
       style={styles.skeletonScreen}
       showsVerticalScrollIndicator={false}
     >
-      {/* IMAGE */}
-
       <View
         style={[
           styles.skeletonHero,
@@ -493,22 +715,14 @@ function ProfileSkeleton({ isSmallPhone, isTablet }) {
         <View style={styles.skeletonBackButton} />
       </View>
 
-      {/* PROFILE HEADER */}
-
       <View style={styles.skeletonProfileCard}>
         <View style={styles.skeletonName} />
-
         <View style={styles.skeletonLocation} />
-
-        <View style={styles.skeletonOccupation} />
+        <View style={styles.skeletonQuickInfo} />
       </View>
 
-      {/* SECTIONS */}
-
       <SkeletonSection />
-
       <SkeletonSection />
-
       <SkeletonSection />
     </ScrollView>
   );
@@ -520,9 +734,7 @@ function SkeletonSection() {
       <View style={styles.skeletonSectionTitle} />
 
       <View style={styles.skeletonLine} />
-
       <View style={styles.skeletonLine} />
-
       <View style={styles.skeletonLineShort} />
     </View>
   );
@@ -561,43 +773,69 @@ const styles = StyleSheet.create({
 
   heroWrapper: {
     width: "100%",
-
     overflow: "hidden",
-
     backgroundColor: "#E2E8F0",
-
     position: "relative",
   },
 
   heroImage: {
     width: "100%",
     height: "100%",
-
     backgroundColor: "#E2E8F0",
   },
 
+  heroOverlay: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 130,
+    backgroundColor: "rgba(0,0,0,0.16)",
+  },
+
+  imagePlaceholder: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#E2E8F0",
+  },
+
+  imagePlaceholderIcon: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#CBD5E1",
+  },
+
+  imagePlaceholderText: {
+    marginTop: 12,
+    color: "#64748B",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+
   // ==========================================================
-  // BACK BUTTON
+  // BACK
   // ==========================================================
 
   backButton: {
     position: "absolute",
-
     top: 16,
     left: 16,
 
     width: 44,
     height: 44,
 
-    borderRadius: 14,
+    borderRadius: 15,
 
     alignItems: "center",
     justifyContent: "center",
 
-    backgroundColor: "rgba(15, 23, 42, 0.58)",
+    backgroundColor: "rgba(15,23,42,0.65)",
 
     borderWidth: 1,
-
     borderColor: "rgba(255,255,255,0.25)",
   },
 
@@ -616,26 +854,41 @@ const styles = StyleSheet.create({
   // ==========================================================
 
   profileCard: {
-    marginTop: -18,
+    marginTop: -20,
 
     backgroundColor: "#FFFFFF",
 
-    borderRadius: 24,
+    borderRadius: 25,
 
     padding: 20,
 
     borderWidth: 1,
-
     borderColor: "#E2E8F0",
 
     zIndex: 5,
+
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 5,
+    },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+
+    elevation: 3,
+  },
+
+  nameRow: {
+    flexDirection: "row",
+    alignItems: "center",
   },
 
   name: {
+    flex: 1,
+
     color: colors.text,
 
     fontSize: 28,
-
     lineHeight: 34,
 
     fontWeight: "900",
@@ -645,92 +898,70 @@ const styles = StyleSheet.create({
 
   nameSmall: {
     fontSize: 24,
-
     lineHeight: 30,
   },
 
-  // ==========================================================
-  // LOCATION
-  // ==========================================================
-
   locationRow: {
     flexDirection: "row",
-
     alignItems: "center",
 
-    gap: 4,
-
-    marginTop: 6,
+    marginTop: 8,
   },
 
-  locationText: {
-    color: colors.muted,
+  locationIcon: {
+    width: 27,
+    height: 27,
 
-    fontSize: 13,
-
-    fontWeight: "600",
-
-    flexShrink: 1,
-  },
-
-  // ==========================================================
-  // OCCUPATION
-  // ==========================================================
-
-  occupationRow: {
-    flexDirection: "row",
-
-    alignItems: "center",
-
-    marginTop: 18,
-
-    paddingTop: 16,
-
-    borderTopWidth: 1,
-
-    borderTopColor: "#F1F5F9",
-  },
-
-  occupationIcon: {
-    width: 42,
-    height: 42,
-
-    borderRadius: 13,
+    borderRadius: 9,
 
     alignItems: "center",
     justifyContent: "center",
 
     backgroundColor: colors.primaryLight,
 
-    borderWidth: 1,
-
-    borderColor: "#DBEAFE",
-
-    marginRight: 11,
+    marginRight: 7,
   },
 
-  occupationContent: {
-    flex: 1,
-
-    minWidth: 0,
-  },
-
-  occupationLabel: {
+  locationText: {
     color: colors.muted,
 
-    fontSize: 10.5,
-
+    fontSize: 13,
     fontWeight: "600",
+
+    flexShrink: 1,
   },
 
-  occupationText: {
+  quickInfoRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+
+    gap: 7,
+
+    marginTop: 14,
+  },
+
+  quickInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+
+    borderRadius: 11,
+
+    backgroundColor: "#F8FAFC",
+
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+
+  quickInfoText: {
+    marginLeft: 5,
+
     color: colors.text,
 
-    fontSize: 14,
-
-    fontWeight: "800",
-
-    marginTop: 2,
+    fontSize: 11.5,
+    fontWeight: "700",
   },
 
   // ==========================================================
@@ -742,7 +973,7 @@ const styles = StyleSheet.create({
   },
 
   // ==========================================================
-  // SECTION CARD
+  // SECTION
   // ==========================================================
 
   sectionCard: {
@@ -755,16 +986,12 @@ const styles = StyleSheet.create({
     marginBottom: 13,
 
     borderWidth: 1,
-
     borderColor: "#E2E8F0",
   },
 
   sectionHeader: {
     flexDirection: "row",
-
     alignItems: "center",
-
-    gap: 9,
 
     marginBottom: 14,
   },
@@ -781,15 +1008,15 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primaryLight,
 
     borderWidth: 1,
-
     borderColor: "#DBEAFE",
+
+    marginRight: 9,
   },
 
   sectionTitle: {
     color: colors.text,
 
     fontSize: 16,
-
     fontWeight: "800",
   },
 
@@ -801,7 +1028,6 @@ const styles = StyleSheet.create({
     color: colors.text,
 
     fontSize: 14.5,
-
     lineHeight: 23,
 
     fontWeight: "400",
@@ -813,7 +1039,6 @@ const styles = StyleSheet.create({
 
   detailsGrid: {
     flexDirection: "row",
-
     flexWrap: "wrap",
 
     marginHorizontal: -5,
@@ -823,11 +1048,9 @@ const styles = StyleSheet.create({
     width: "50%",
 
     paddingHorizontal: 5,
-
     paddingVertical: 8,
 
     flexDirection: "row",
-
     alignItems: "center",
   },
 
@@ -843,7 +1066,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#F8FAFC",
 
     borderWidth: 1,
-
     borderColor: "#E2E8F0",
 
     marginRight: 9,
@@ -851,7 +1073,6 @@ const styles = StyleSheet.create({
 
   detailContent: {
     flex: 1,
-
     minWidth: 0,
   },
 
@@ -859,7 +1080,6 @@ const styles = StyleSheet.create({
     color: colors.muted,
 
     fontSize: 10.5,
-
     fontWeight: "600",
   },
 
@@ -867,7 +1087,6 @@ const styles = StyleSheet.create({
     color: colors.text,
 
     fontSize: 13,
-
     fontWeight: "700",
 
     marginTop: 2,
@@ -876,12 +1095,92 @@ const styles = StyleSheet.create({
   },
 
   // ==========================================================
+  // FAMILY
+  // ==========================================================
+
+  familyList: {
+    gap: 10,
+  },
+
+  familyItem: {
+    flexDirection: "row",
+    alignItems: "center",
+
+    padding: 11,
+
+    borderRadius: 14,
+
+    backgroundColor: "#F8FAFC",
+
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+
+  familyIcon: {
+    width: 38,
+    height: 38,
+
+    borderRadius: 12,
+
+    alignItems: "center",
+    justifyContent: "center",
+
+    backgroundColor: colors.primaryLight,
+
+    marginRight: 10,
+  },
+
+  familyContent: {
+    flex: 1,
+  },
+
+  familyLabel: {
+    color: colors.muted,
+
+    fontSize: 10.5,
+    fontWeight: "600",
+  },
+
+  familyValue: {
+    color: colors.text,
+
+    fontSize: 13,
+    fontWeight: "700",
+
+    marginTop: 2,
+  },
+
+  familyDescription: {
+    marginTop: 12,
+
+    paddingTop: 12,
+
+    borderTopWidth: 1,
+    borderTopColor: "#F1F5F9",
+  },
+
+  familyDescriptionLabel: {
+    color: colors.muted,
+
+    fontSize: 10.5,
+    fontWeight: "600",
+  },
+
+  familyDescriptionText: {
+    color: colors.text,
+
+    fontSize: 13.5,
+    lineHeight: 21,
+
+    marginTop: 4,
+  },
+
+  // ==========================================================
   // INTERESTS
   // ==========================================================
 
   interestsWrapper: {
     flexDirection: "row",
-
     flexWrap: "wrap",
 
     gap: 8,
@@ -889,11 +1188,9 @@ const styles = StyleSheet.create({
 
   interestTag: {
     flexDirection: "row",
-
     alignItems: "center",
 
     paddingHorizontal: 11,
-
     paddingVertical: 8,
 
     borderRadius: 13,
@@ -901,7 +1198,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#F8FAFC",
 
     borderWidth: 1,
-
     borderColor: "#E2E8F0",
 
     gap: 6,
@@ -911,8 +1207,59 @@ const styles = StyleSheet.create({
     color: colors.primary,
 
     fontSize: 12,
-
     fontWeight: "700",
+  },
+
+  // ==========================================================
+  // BIODATA
+  // ==========================================================
+
+  biodataCard: {
+    flexDirection: "row",
+    alignItems: "center",
+
+    padding: 12,
+
+    borderRadius: 15,
+
+    backgroundColor: "#F8FAFC",
+
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+
+  biodataIcon: {
+    width: 45,
+    height: 45,
+
+    borderRadius: 14,
+
+    alignItems: "center",
+    justifyContent: "center",
+
+    backgroundColor: colors.primaryLight,
+
+    marginRight: 11,
+  },
+
+  biodataContent: {
+    flex: 1,
+  },
+
+  biodataTitle: {
+    color: colors.text,
+
+    fontSize: 13.5,
+    fontWeight: "800",
+  },
+
+  biodataText: {
+    color: colors.muted,
+
+    fontSize: 11.5,
+    lineHeight: 17,
+
+    marginTop: 3,
   },
 
   // ==========================================================
@@ -921,7 +1268,6 @@ const styles = StyleSheet.create({
 
   connectionCard: {
     flexDirection: "row",
-
     alignItems: "center",
 
     backgroundColor: colors.primaryLight,
@@ -933,13 +1279,12 @@ const styles = StyleSheet.create({
     marginBottom: 10,
 
     borderWidth: 1,
-
     borderColor: "#DBEAFE",
   },
 
   connectionIcon: {
-    width: 44,
-    height: 44,
+    width: 46,
+    height: 46,
 
     borderRadius: 14,
 
@@ -949,7 +1294,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
 
     borderWidth: 1,
-
     borderColor: "#DBEAFE",
 
     marginRight: 11,
@@ -957,7 +1301,6 @@ const styles = StyleSheet.create({
 
   connectionContent: {
     flex: 1,
-
     minWidth: 0,
   },
 
@@ -965,7 +1308,6 @@ const styles = StyleSheet.create({
     color: colors.text,
 
     fontSize: 13.5,
-
     fontWeight: "800",
   },
 
@@ -973,7 +1315,6 @@ const styles = StyleSheet.create({
     color: colors.muted,
 
     fontSize: 11.5,
-
     lineHeight: 17,
 
     marginTop: 3,
@@ -995,13 +1336,11 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
 
     borderTopWidth: 1,
-
     borderTopColor: "#E2E8F0",
   },
 
   bottomBarInner: {
     width: "100%",
-
     alignSelf: "center",
   },
 
@@ -1013,11 +1352,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
 
     borderWidth: 1,
-
     borderColor: colors.primary,
 
     flexDirection: "row",
-
     alignItems: "center",
     justifyContent: "center",
 
@@ -1028,7 +1365,6 @@ const styles = StyleSheet.create({
 
   actionButtonSent: {
     backgroundColor: colors.success,
-
     borderColor: colors.success,
   },
 
@@ -1046,7 +1382,6 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
 
     fontSize: 15,
-
     fontWeight: "800",
 
     flex: 1,
@@ -1055,12 +1390,80 @@ const styles = StyleSheet.create({
   },
 
   // ==========================================================
+  // ERROR
+  // ==========================================================
+
+  errorScreen: {
+    flex: 1,
+
+    alignItems: "center",
+    justifyContent: "center",
+
+    paddingHorizontal: 30,
+  },
+
+  errorIcon: {
+    width: 76,
+    height: 76,
+
+    borderRadius: 25,
+
+    alignItems: "center",
+    justifyContent: "center",
+
+    backgroundColor: colors.primaryLight,
+  },
+
+  errorTitle: {
+    marginTop: 17,
+
+    color: colors.text,
+
+    fontSize: 19,
+    fontWeight: "900",
+  },
+
+  errorText: {
+    marginTop: 7,
+
+    color: colors.muted,
+
+    fontSize: 13.5,
+    lineHeight: 20,
+
+    textAlign: "center",
+  },
+
+  errorButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+
+    gap: 7,
+
+    marginTop: 20,
+
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+
+    borderRadius: 14,
+
+    backgroundColor: colors.primary,
+  },
+
+  errorButtonText: {
+    color: "#FFFFFF",
+
+    fontSize: 13.5,
+    fontWeight: "800",
+  },
+
+  // ==========================================================
   // SKELETON
   // ==========================================================
 
   skeletonScreen: {
     flex: 1,
-
     backgroundColor: colors.bg,
   },
 
@@ -1100,13 +1503,11 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
 
     borderWidth: 1,
-
     borderColor: "#E2E8F0",
   },
 
   skeletonName: {
     width: "62%",
-
     height: 28,
 
     borderRadius: 8,
@@ -1116,7 +1517,6 @@ const styles = StyleSheet.create({
 
   skeletonLocation: {
     width: "38%",
-
     height: 13,
 
     borderRadius: 7,
@@ -1126,16 +1526,15 @@ const styles = StyleSheet.create({
     marginTop: 9,
   },
 
-  skeletonOccupation: {
-    width: "70%",
+  skeletonQuickInfo: {
+    width: "55%",
+    height: 32,
 
-    height: 42,
-
-    borderRadius: 12,
+    borderRadius: 10,
 
     backgroundColor: "#E2E8F0",
 
-    marginTop: 18,
+    marginTop: 14,
   },
 
   skeletonSection: {
@@ -1150,13 +1549,11 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
 
     borderWidth: 1,
-
     borderColor: "#E2E8F0",
   },
 
   skeletonSectionTitle: {
     width: 140,
-
     height: 20,
 
     borderRadius: 7,
@@ -1168,7 +1565,6 @@ const styles = StyleSheet.create({
 
   skeletonLine: {
     width: "90%",
-
     height: 13,
 
     borderRadius: 7,
@@ -1180,7 +1576,6 @@ const styles = StyleSheet.create({
 
   skeletonLineShort: {
     width: "55%",
-
     height: 13,
 
     borderRadius: 7,

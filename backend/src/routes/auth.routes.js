@@ -20,11 +20,82 @@ function signToken(userId) {
    Email + Password only
 ========================================================= */
 
+// router.post("/signup", async (req, res) => {
+//   try {
+//     const { email, password } = req.body;
+
+//     // Required fields
+//     if (!email || !password) {
+//       return res.status(400).json({
+//         message: "Email and password are required.",
+//       });
+//     }
+
+//     const normalizedEmail = String(email).trim().toLowerCase();
+
+//     // Email validation
+//     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+//     if (!emailRegex.test(normalizedEmail)) {
+//       return res.status(400).json({
+//         message: "Please enter a valid email address.",
+//       });
+//     }
+
+//     // Password validation
+//     if (String(password).length < 6) {
+//       return res.status(400).json({
+//         message: "Password must contain at least 6 characters.",
+//       });
+//     }
+
+//     // Check existing email
+//     const exists = await User.findOne({
+//       email: normalizedEmail,
+//     });
+
+//     if (exists) {
+//       return res.status(409).json({
+//         message: "Email already registered.",
+//       });
+//     }
+
+//     // Hash password
+//     const passwordHash = await bcrypt.hash(password, 12);
+
+//     // Create account
+//     const user = await User.create({
+//       email: normalizedEmail,
+//       passwordHash,
+
+//       // Profile will be completed later
+//       profileCompleted: false,
+//     });
+
+//     const token = signToken(user._id.toString());
+
+//     return res.status(201).json({
+//       message: "Account created successfully.",
+//       token,
+//       user: sanitize(user),
+//     });
+//   } catch (error) {
+//     console.error("SIGNUP ERROR:", error);
+
+//     return res.status(500).json({
+//       message: "Signup failed.",
+//     });
+//   }
+// });
 router.post("/signup", async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Required fields
+    console.log("SIGNUP REQUEST:", {
+      email,
+      hasPassword: !!password,
+    });
+
     if (!email || !password) {
       return res.status(400).json({
         message: "Email and password are required.",
@@ -33,7 +104,6 @@ router.post("/signup", async (req, res) => {
 
     const normalizedEmail = String(email).trim().toLowerCase();
 
-    // Email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     if (!emailRegex.test(normalizedEmail)) {
@@ -42,14 +112,12 @@ router.post("/signup", async (req, res) => {
       });
     }
 
-    // Password validation
     if (String(password).length < 6) {
       return res.status(400).json({
         message: "Password must contain at least 6 characters.",
       });
     }
 
-    // Check existing email
     const exists = await User.findOne({
       email: normalizedEmail,
     });
@@ -60,17 +128,19 @@ router.post("/signup", async (req, res) => {
       });
     }
 
-    // Hash password
-    const passwordHash = await bcrypt.hash(password, 12);
+    const passwordHash = await bcrypt.hash(String(password), 12);
 
-    // Create account
     const user = await User.create({
       email: normalizedEmail,
       passwordHash,
-
-      // Profile will be completed later
       profileCompleted: false,
     });
+
+    console.log("USER CREATED:", user._id.toString());
+
+    if (!process.env.JWT_SECRET) {
+      throw new Error("JWT_SECRET is missing from environment variables.");
+    }
 
     const token = signToken(user._id.toString());
 
@@ -80,14 +150,32 @@ router.post("/signup", async (req, res) => {
       user: sanitize(user),
     });
   } catch (error) {
-    console.error("SIGNUP ERROR:", error);
+    console.error("========== SIGNUP ERROR ==========");
+    console.error("Name:", error.name);
+    console.error("Message:", error.message);
+    console.error("Code:", error.code);
+    console.error("Stack:", error.stack);
+    console.error("===================================");
+
+    if (error.code === 11000) {
+      return res.status(409).json({
+        message: "Email already registered.",
+      });
+    }
+
+    if (error.name === "ValidationError") {
+      return res.status(400).json({
+        message: Object.values(error.errors)
+          .map((err) => err.message)
+          .join(", "),
+      });
+    }
 
     return res.status(500).json({
-      message: "Signup failed.",
+      message: error.message || "Signup failed.",
     });
   }
 });
-
 /* =========================================================
    LOGIN
    Email + Password
@@ -137,8 +225,6 @@ router.post("/login", async (req, res) => {
     });
   }
 });
-
-
 
 function sanitize(user) {
   const obj = user.toObject ? user.toObject() : { ...user };
