@@ -26,11 +26,13 @@ if (!SMTP_PASS) {
 
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
-  port: 465,
-  secure: true,
 
-  // IMPORTANT FOR RENDER
-  family: 4,
+  // Use 587 instead of 465
+  port: 587,
+
+  // STARTTLS
+  secure: false,
+  requireTLS: true,
 
   auth: {
     user: SMTP_USER,
@@ -43,7 +45,7 @@ const transporter = nodemailer.createTransport({
 });
 
 /* =========================================================
-   VERIFY SMTP
+   VERIFY
 ========================================================= */
 
 export async function verifyEmailTransport() {
@@ -54,7 +56,7 @@ export async function verifyEmailTransport() {
 
     return true;
   } catch (error) {
-    console.error("EMAIL SMTP CONNECTION ERROR:", error?.message || error);
+    console.error("EMAIL SMTP CONNECTION ERROR:", error.message);
 
     return false;
   }
@@ -108,158 +110,115 @@ If you did not request this code, you can safely ignore this email.
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8" />
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0"
-  />
-  <title>Email Verification</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Email Verification</title>
 </head>
 
 <body
-  style="
-    margin:0;
-    padding:0;
-    background:#f8fafc;
-    font-family:Arial,Helvetica,sans-serif;
-  "
+style="
+margin:0;
+padding:0;
+background:#f8fafc;
+font-family:Arial,Helvetica,sans-serif;
+"
 >
-  <div
-    style="
-      max-width:520px;
-      margin:40px auto;
-      padding:32px;
-      background:#ffffff;
-      border-radius:20px;
-    "
-  >
 
-    <div style="text-align:center;">
+<div
+style="
+max-width:520px;
+margin:40px auto;
+padding:32px;
+background:#ffffff;
+border-radius:20px;
+"
+>
 
-      <div
-        style="
-          width:60px;
-          height:60px;
-          margin:0 auto 18px;
-          border-radius:30px;
-          background:#eff6ff;
-          text-align:center;
-          line-height:60px;
-          color:#2563eb;
-          font-size:28px;
-          font-weight:700;
-        "
-      >
-        ✓
-      </div>
+<div style="text-align:center;">
 
-      <h1
-        style="
-          margin:0 0 8px;
-          color:#0f172a;
-          font-size:26px;
-          font-weight:800;
-        "
-      >
-        Verify your email
-      </h1>
+<h1
+style="
+margin:0 0 8px;
+color:#0f172a;
+font-size:26px;
+font-weight:800;
+"
+>
+Verify your email
+</h1>
 
-      <p
-        style="
-          margin:0;
-          color:#64748b;
-          font-size:15px;
-          line-height:1.6;
-        "
-      >
-        Use the verification code below
-        to continue creating your account.
-      </p>
+<p
+style="
+margin:0;
+color:#64748b;
+font-size:15px;
+line-height:1.6;
+"
+>
+Use the verification code below to continue.
+</p>
 
-    </div>
+</div>
 
-    <div
-      style="
-        margin:30px 0;
-        padding:25px;
-        background:#eff6ff;
-        border-radius:16px;
-        text-align:center;
-      "
-    >
+<div
+style="
+margin:30px 0;
+padding:25px;
+background:#eff6ff;
+border-radius:16px;
+text-align:center;
+"
+>
 
-      <div
-        style="
-          margin-bottom:12px;
-          color:#64748b;
-          font-size:12px;
-          font-weight:700;
-          letter-spacing:1px;
-        "
-      >
-        VERIFICATION CODE
-      </div>
+<div
+style="
+margin-bottom:12px;
+color:#64748b;
+font-size:12px;
+font-weight:700;
+letter-spacing:1px;
+"
+>
+VERIFICATION CODE
+</div>
 
-      <div
-        style="
-          color:#1d4ed8;
-          font-size:38px;
-          font-weight:800;
-          letter-spacing:9px;
-        "
-      >
-        ${otp}
-      </div>
+<div
+style="
+color:#1d4ed8;
+font-size:38px;
+font-weight:800;
+letter-spacing:9px;
+"
+>
+${otp}
+</div>
 
-    </div>
+</div>
 
-    <p
-      style="
-        margin:0 0 15px;
-        color:#475569;
-        font-size:14px;
-        line-height:1.7;
-      "
-    >
-      Your verification code expires in
-      <strong>10 minutes</strong>.
-    </p>
+<p
+style="
+color:#475569;
+font-size:14px;
+line-height:1.7;
+"
+>
+Your verification code expires in
+<strong>10 minutes</strong>.
+</p>
 
-    <div
-      style="
-        padding:15px;
-        background:#f8fafc;
-        border-radius:12px;
-      "
-    >
-      <p
-        style="
-          margin:0;
-          color:#64748b;
-          font-size:13px;
-          line-height:1.7;
-        "
-      >
-        If you did not request this code,
-        you can safely ignore this email.
-        Never share your verification code with anyone.
-      </p>
-    </div>
+<p
+style="
+color:#64748b;
+font-size:13px;
+line-height:1.7;
+"
+>
+If you did not request this code, you can safely ignore this email.
+Never share your verification code with anyone.
+</p>
 
-    <div
-      style="
-        margin-top:28px;
-        padding-top:20px;
-        border-top:1px solid #e2e8f0;
-        text-align:center;
-        color:#94a3b8;
-        font-size:12px;
-      "
-    >
-      Your Matrimony App
-    </div>
+</div>
 
-  </div>
 </body>
 </html>
       `,
@@ -269,7 +228,7 @@ If you did not request this code, you can safely ignore this email.
 
     return info;
   } catch (error) {
-    console.error("NODEMAILER ERROR:", error?.message || error);
+    console.error("NODEMAILER ERROR:", error);
 
     throw new Error(error?.message || "Unable to send verification email.");
   }
