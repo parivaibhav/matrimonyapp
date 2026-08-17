@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { api } from "../api";
 import { colors, shadow } from "../theme";
@@ -92,7 +93,6 @@ export default function SignupScreen({ navigation }) {
       );
     } catch (error) {
       console.log("SEND OTP ERROR:", error);
-
       console.log("SEND OTP ERROR RESPONSE:", error.response?.data);
 
       let message = "Unable to send verification code.";
@@ -106,6 +106,63 @@ export default function SignupScreen({ navigation }) {
       }
 
       Alert.alert("Send OTP failed", message);
+    } finally {
+      setSendingOtp(false);
+    }
+  }
+
+  /* =========================================================
+     RESEND OTP
+  ========================================================= */
+
+  async function resendOtp() {
+    const normalizedEmail = getEmail();
+
+    if (!normalizedEmail) return;
+
+    if (remainingSeconds > 0) {
+      return;
+    }
+
+    try {
+      setSendingOtp(true);
+
+      console.log("RESEND OTP REQUEST:", {
+        email: normalizedEmail,
+      });
+
+      const response = await api.post("/auth/resend-signup-otp", {
+        email: normalizedEmail,
+      });
+
+      console.log("RESEND OTP RESPONSE:", response.data);
+
+      setOtp("");
+      setOtpSent(true);
+
+      const expiresIn = Number(response.data?.expiresIn) || 600;
+
+      setRemainingSeconds(expiresIn);
+
+      Alert.alert(
+        "OTP resent",
+        `A new verification code has been sent to ${normalizedEmail}.`,
+      );
+    } catch (error) {
+      console.log("RESEND OTP ERROR:", error);
+      console.log("RESEND OTP ERROR RESPONSE:", error.response?.data);
+
+      let message = "Unable to resend verification code.";
+
+      if (error.response?.data?.message) {
+        message = error.response.data.message;
+      } else if (error.message === "Network Error") {
+        message = "Cannot connect to backend server.";
+      } else if (error.message) {
+        message = error.message;
+      }
+
+      Alert.alert("Resend failed", message);
     } finally {
       setSendingOtp(false);
     }
@@ -135,38 +192,38 @@ export default function SignupScreen({ navigation }) {
     try {
       setVerifying(true);
 
-      console.log("VERIFY OTP REQUEST:", {
+      console.log("VERIFY SIGNUP OTP REQUEST:", {
         email: normalizedEmail,
         otp: cleanOtp,
       });
 
-      const response = await api.post("/auth/verify-otp", {
+      /*
+       * IMPORTANT:
+       * Backend route is /auth/verify-signup
+       */
+      const response = await api.post("/auth/verify-signup", {
         email: normalizedEmail,
         otp: cleanOtp,
-        purpose: "signup",
       });
 
-      console.log("VERIFY OTP RESPONSE:", response.data);
+      console.log("VERIFY SIGNUP OTP RESPONSE:", response.data);
 
       const { token, user } = response.data || {};
 
-      /*
-       * Store token/user if backend returns them.
-       *
-       * If your backend only verifies the email and
-       * creates the user later, remove this section.
-       */
+      /* =====================================================
+         STORE LOGIN TOKEN
+      ===================================================== */
 
       if (token) {
-        const AsyncStorage =
-          require("@react-native-async-storage/async-storage").default;
-
         await AsyncStorage.setItem("token", token);
 
         if (user) {
           await AsyncStorage.setItem("user", JSON.stringify(user));
         }
       }
+
+      setOtp("");
+      setRemainingSeconds(0);
 
       Alert.alert(
         "Email verified",
@@ -217,24 +274,28 @@ export default function SignupScreen({ navigation }) {
      TIMER
   ========================================================= */
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (remainingSeconds <= 0) {
       return;
     }
 
     const timer = setInterval(() => {
-      setRemainingSeconds((prev) => {
-        if (prev <= 1) {
+      setRemainingSeconds((previous) => {
+        if (previous <= 1) {
           clearInterval(timer);
           return 0;
         }
 
-        return prev - 1;
+        return previous - 1;
       });
     }, 1000);
 
     return () => clearInterval(timer);
   }, [remainingSeconds]);
+
+  /* =========================================================
+     FORMAT TIMER
+  ========================================================= */
 
   function formatTime(seconds) {
     const minutes = Math.floor(seconds / 60);
@@ -250,7 +311,7 @@ export default function SignupScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
       <KeyboardAvoidingView
-        style={{ flex: 1 }}
+        style={styles.keyboardContainer}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <ScrollView
@@ -372,7 +433,7 @@ export default function SignupScreen({ navigation }) {
                   />
                 </View>
 
-                {/* SEND OTP INSIDE OTP ROW */}
+                {/* SEND / TIMER BUTTON */}
 
                 <Pressable
                   style={[
@@ -380,7 +441,7 @@ export default function SignupScreen({ navigation }) {
                     (sendingOtp || remainingSeconds > 0) &&
                       styles.sendOtpButtonDisabled,
                   ]}
-                  onPress={sendOtp}
+                  onPress={otpSent ? resendOtp : sendOtp}
                   disabled={sendingOtp || remainingSeconds > 0 || verifying}
                 >
                   {sendingOtp ? (
@@ -389,7 +450,9 @@ export default function SignupScreen({ navigation }) {
                     <Text style={styles.sendOtpText}>
                       {remainingSeconds > 0
                         ? formatTime(remainingSeconds)
-                        : "Send OTP"}
+                        : otpSent
+                          ? "Resend"
+                          : "Send OTP"}
                     </Text>
                   )}
                 </Pressable>
@@ -447,8 +510,19 @@ export default function SignupScreen({ navigation }) {
                   Resend in {formatTime(remainingSeconds)}
                 </Text>
               ) : (
-                <Pressable onPress={sendOtp} disabled={sendingOtp || verifying}>
-                  <Text style={styles.resendLink}>Resend OTP</Text>
+                <Pressable
+                  onPress={resendOtp}
+                  disabled={sendingOtp || verifying || !otpSent}
+                  hitSlop={8}
+                >
+                  <Text
+                    style={[
+                      styles.resendLink,
+                      !otpSent && styles.resendLinkDisabled,
+                    ]}
+                  >
+                    Resend OTP
+                  </Text>
                 </Pressable>
               )}
             </View>
@@ -515,6 +589,10 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.bg,
+  },
+
+  keyboardContainer: {
+    flex: 1,
   },
 
   container: {
@@ -678,6 +756,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     fontSize: 16,
     color: colors.text,
+    letterSpacing: 2,
   },
 
   sendOtpButton: {
@@ -790,6 +869,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "900",
     marginLeft: 5,
+  },
+
+  resendLinkDisabled: {
+    opacity: 0.4,
   },
 
   timerText: {

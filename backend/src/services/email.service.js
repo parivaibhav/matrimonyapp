@@ -19,9 +19,11 @@ export async function sendVerificationOtp(email, otp) {
     throw new Error("OTP is missing.");
   }
 
+  const from = process.env.EMAIL_FROM || "onboarding@resend.dev";
+
   try {
     const { data, error } = await resend.emails.send({
-      from: "onboarding@resend.dev",
+      from,
       to: [email],
       subject: "Your verification code",
 
@@ -30,10 +32,12 @@ export async function sendVerificationOtp(email, otp) {
         <html>
           <head>
             <meta charset="UTF-8" />
+
             <meta
               name="viewport"
               content="width=device-width, initial-scale=1.0"
             />
+
             <title>Email Verification</title>
           </head>
 
@@ -49,21 +53,39 @@ export async function sendVerificationOtp(email, otp) {
               style="
                 max-width: 520px;
                 margin: 40px auto;
+                padding: 32px;
                 background: #ffffff;
                 border-radius: 20px;
-                padding: 32px;
-                box-shadow: 0 8px 30px rgba(15, 23, 42, 0.08);
+                box-shadow:
+                  0 8px 30px
+                  rgba(15, 23, 42, 0.08);
               "
             >
               <div style="text-align: center;">
-                <h1
+                <div
                   style="
-                    margin: 0 0 10px;
+                    display: inline-block;
+                    width: 58px;
+                    height: 58px;
+                    line-height: 58px;
+                    border-radius: 29px;
+                    background: #eff6ff;
                     color: #2563eb;
-                    font-size: 28px;
+                    font-size: 26px;
+                    font-weight: 700;
                   "
                 >
-                  Email Verification
+                  ✓
+                </div>
+
+                <h1
+                  style="
+                    margin: 18px 0 8px;
+                    color: #0f172a;
+                    font-size: 26px;
+                  "
+                >
+                  Verify your email
                 </h1>
 
                 <p
@@ -71,16 +93,18 @@ export async function sendVerificationOtp(email, otp) {
                     margin: 0;
                     color: #64748b;
                     font-size: 15px;
+                    line-height: 1.6;
                   "
                 >
-                  Use the verification code below to continue.
+                  Use the verification code below
+                  to continue creating your account.
                 </p>
               </div>
 
               <div
                 style="
                   margin: 30px 0;
-                  padding: 22px;
+                  padding: 24px;
                   background: #eff6ff;
                   border-radius: 16px;
                   text-align: center;
@@ -88,19 +112,21 @@ export async function sendVerificationOtp(email, otp) {
               >
                 <div
                   style="
-                    color: #64748b;
-                    font-size: 13px;
                     margin-bottom: 10px;
+                    color: #64748b;
+                    font-size: 12px;
+                    font-weight: 700;
+                    letter-spacing: 1px;
                   "
                 >
-                  YOUR VERIFICATION CODE
+                  VERIFICATION CODE
                 </div>
 
                 <div
                   style="
                     color: #1d4ed8;
-                    font-size: 36px;
-                    font-weight: 700;
+                    font-size: 38px;
+                    font-weight: 800;
                     letter-spacing: 10px;
                   "
                 >
@@ -112,22 +138,22 @@ export async function sendVerificationOtp(email, otp) {
                 style="
                   color: #475569;
                   font-size: 14px;
-                  line-height: 1.6;
+                  line-height: 1.7;
                 "
               >
-                This code expires in
-                <strong>10 minutes</strong>.
+                This verification code will expire
+                in <strong>10 minutes</strong>.
               </p>
 
               <p
                 style="
                   color: #94a3b8;
                   font-size: 13px;
-                  line-height: 1.6;
+                  line-height: 1.7;
                 "
               >
-                If you did not request this code, you can safely
-                ignore this email.
+                If you did not request this code,
+                you can safely ignore this email.
               </p>
 
               <div
@@ -149,12 +175,12 @@ export async function sendVerificationOtp(email, otp) {
     });
 
     if (error) {
-      console.error("RESEND ERROR:", error);
+      console.error("RESEND EMAIL ERROR:", error);
 
       throw new Error(error.message || "Unable to send verification email.");
     }
 
-    console.log("OTP EMAIL SENT:", data);
+    console.log("OTP EMAIL SENT:", data?.id || data);
 
     return data;
   } catch (error) {
