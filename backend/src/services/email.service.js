@@ -6,23 +6,18 @@ import nodemailer from "nodemailer";
 
 const SMTP_USER = process.env.SMTP_USER;
 const SMTP_PASS = process.env.SMTP_PASS;
-const SMTP_FROM =
-  process.env.SMTP_FROM || SMTP_USER;
+const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER;
 
 /* =========================================================
    VALIDATE CONFIG
 ========================================================= */
 
 if (!SMTP_USER) {
-  console.warn(
-    "WARNING: SMTP_USER is missing from environment variables."
-  );
+  console.warn("WARNING: SMTP_USER is missing.");
 }
 
 if (!SMTP_PASS) {
-  console.warn(
-    "WARNING: SMTP_PASS is missing from environment variables."
-  );
+  console.warn("WARNING: SMTP_PASS is missing.");
 }
 
 /* =========================================================
@@ -30,67 +25,60 @@ if (!SMTP_PASS) {
 ========================================================= */
 
 const transporter = nodemailer.createTransport({
-  service: "gmail",
+  host: "smtp.gmail.com",
+  port: 465,
+  secure: true,
+
+  // IMPORTANT FOR RENDER
+  family: 4,
 
   auth: {
     user: SMTP_USER,
     pass: SMTP_PASS,
   },
+
+  connectionTimeout: 15000,
+  greetingTimeout: 15000,
+  socketTimeout: 20000,
 });
 
 /* =========================================================
-   VERIFY SMTP CONNECTION
+   VERIFY SMTP
 ========================================================= */
 
 export async function verifyEmailTransport() {
   try {
     await transporter.verify();
 
-    console.log(
-      "EMAIL SMTP CONNECTION: READY"
-    );
+    console.log("EMAIL SMTP CONNECTION: READY");
 
     return true;
   } catch (error) {
-    console.error(
-      "EMAIL SMTP CONNECTION ERROR:",
-      error.message
-    );
+    console.error("EMAIL SMTP CONNECTION ERROR:", error?.message || error);
 
     return false;
   }
 }
 
 /* =========================================================
-   SEND OTP EMAIL
+   SEND OTP
 ========================================================= */
 
-export async function sendVerificationOtp(
-  email,
-  otp
-) {
+export async function sendVerificationOtp(email, otp) {
   if (!SMTP_USER) {
-    throw new Error(
-      "SMTP_USER is missing."
-    );
+    throw new Error("SMTP_USER is missing.");
   }
 
   if (!SMTP_PASS) {
-    throw new Error(
-      "SMTP_PASS is missing."
-    );
+    throw new Error("SMTP_PASS is missing.");
   }
 
   if (!email) {
-    throw new Error(
-      "Recipient email is missing."
-    );
+    throw new Error("Recipient email is missing.");
   }
 
   if (!otp) {
-    throw new Error(
-      "OTP is missing."
-    );
+    throw new Error("OTP is missing.");
   }
 
   try {
@@ -102,8 +90,7 @@ export async function sendVerificationOtp(
 
       to: email,
 
-      subject:
-        "Your Matrimony App verification code",
+      subject: "Your Matrimony App verification code",
 
       text: `
 Your Matrimony App
@@ -122,12 +109,10 @@ If you did not request this code, you can safely ignore this email.
 <html>
 <head>
   <meta charset="UTF-8" />
-
   <meta
     name="viewport"
     content="width=device-width, initial-scale=1.0"
   />
-
   <title>Email Verification</title>
 </head>
 
@@ -136,10 +121,7 @@ If you did not request this code, you can safely ignore this email.
     margin:0;
     padding:0;
     background:#f8fafc;
-    font-family:
-      Arial,
-      Helvetica,
-      sans-serif;
+    font-family:Arial,Helvetica,sans-serif;
   "
 >
   <div
@@ -149,19 +131,10 @@ If you did not request this code, you can safely ignore this email.
       padding:32px;
       background:#ffffff;
       border-radius:20px;
-      box-shadow:
-        0 8px 30px
-        rgba(15,23,42,0.08);
     "
   >
 
-    <!-- HEADER -->
-
-    <div
-      style="
-        text-align:center;
-      "
-    >
+    <div style="text-align:center;">
 
       <div
         style="
@@ -205,8 +178,6 @@ If you did not request this code, you can safely ignore this email.
 
     </div>
 
-    <!-- OTP -->
-
     <div
       style="
         margin:30px 0;
@@ -242,8 +213,6 @@ If you did not request this code, you can safely ignore this email.
 
     </div>
 
-    <!-- EXPIRY -->
-
     <p
       style="
         margin:0 0 15px;
@@ -256,8 +225,6 @@ If you did not request this code, you can safely ignore this email.
       <strong>10 minutes</strong>.
     </p>
 
-    <!-- SECURITY -->
-
     <div
       style="
         padding:15px;
@@ -265,7 +232,6 @@ If you did not request this code, you can safely ignore this email.
         border-radius:12px;
       "
     >
-
       <p
         style="
           margin:0;
@@ -276,13 +242,9 @@ If you did not request this code, you can safely ignore this email.
       >
         If you did not request this code,
         you can safely ignore this email.
-        Never share your verification code
-        with anyone.
+        Never share your verification code with anyone.
       </p>
-
     </div>
-
-    <!-- FOOTER -->
 
     <div
       style="
@@ -303,21 +265,12 @@ If you did not request this code, you can safely ignore this email.
       `,
     });
 
-    console.log(
-      "OTP EMAIL SENT:",
-      info.messageId
-    );
+    console.log("OTP EMAIL SENT:", info.messageId);
 
     return info;
   } catch (error) {
-    console.error(
-      "NODEMAILER ERROR:",
-      error
-    );
+    console.error("NODEMAILER ERROR:", error?.message || error);
 
-    throw new Error(
-      error?.message ||
-        "Unable to send verification email."
-    );
+    throw new Error(error?.message || "Unable to send verification email.");
   }
 }
