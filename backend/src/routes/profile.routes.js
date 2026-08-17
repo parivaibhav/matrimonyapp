@@ -4,7 +4,7 @@ import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
-import User, { DASHANAM_OPTIONS } from "../models/User.js";
+import User from "../models/User.js";
 import { auth } from "../middleware/auth.js";
 
 const router = Router();
@@ -34,9 +34,13 @@ const storage = multer.diskStorage({
   filename: function (req, file, cb) {
     const ext = path.extname(file.originalname) || ".jpg";
 
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    const uniqueSuffix =
+      Date.now() + "-" + Math.round(Math.random() * 1e9);
 
-    cb(null, file.fieldname + "-" + uniqueSuffix + ext);
+    cb(
+      null,
+      file.fieldname + "-" + uniqueSuffix + ext,
+    );
   },
 });
 
@@ -84,6 +88,7 @@ const EDUCATION_OPTIONS = [
 
 /* =========================================================
    GET EDUCATION OPTIONS
+   GET /profiles/options/education
 ========================================================= */
 
 router.get("/options/education", auth, async (req, res) => {
@@ -101,30 +106,17 @@ router.get("/options/education", auth, async (req, res) => {
 });
 
 /* =========================================================
-   GET DASHANAM OPTIONS
-========================================================= */
-
-router.get("/options/dasha-nam", auth, async (req, res) => {
-  try {
-    return res.json({
-      options: DASHANAM_OPTIONS,
-    });
-  } catch (error) {
-    console.error("DASHANAM OPTIONS ERROR:", error);
-
-    return res.status(500).json({
-      message: "Could not load Dasha Nam options",
-    });
-  }
-});
-
-/* =========================================================
    GET ALL PROFILES
+   GET /profiles
 ========================================================= */
 
 router.get("/", auth, async (req, res) => {
   try {
-    const { gender, search, city, dashaNam } = req.query;
+    const {
+      gender,
+      search,
+      city,
+    } = req.query;
 
     console.log("======================================");
     console.log("GET /profiles");
@@ -134,10 +126,6 @@ router.get("/", auth, async (req, res) => {
 
     /* -------------------------------------------------------
        BASE FILTER
-       
-       IMPORTANT:
-       Do NOT use profileCompleted: true here if you already
-       have old users in MongoDB without this field.
     ------------------------------------------------------- */
 
     const filter = {
@@ -147,14 +135,14 @@ router.get("/", auth, async (req, res) => {
     };
 
     /* -------------------------------------------------------
-       OPTIONAL PROFILE COMPLETION FILTER
-       
-       A profile is considered visible if:
+       PROFILE COMPLETION FILTER
+
+       Visible when:
        - profileCompleted === true
        OR
        - profileCompleted does not exist
 
-       This helps with old database records.
+       This supports old users.
     ------------------------------------------------------- */
 
     filter.$or = [
@@ -199,37 +187,40 @@ router.get("/", auth, async (req, res) => {
     }
 
     /* -------------------------------------------------------
-       DASHANAM
-    ------------------------------------------------------- */
-
-    if (dashaNam && DASHANAM_OPTIONS.includes(dashaNam)) {
-      filter.dashaNam = dashaNam;
-    }
-
-    /* -------------------------------------------------------
        DEBUG DATABASE COUNT
     ------------------------------------------------------- */
 
     const totalUsers = await User.countDocuments();
 
-    console.log("TOTAL USERS IN DATABASE:", totalUsers);
+    console.log(
+      "TOTAL USERS IN DATABASE:",
+      totalUsers,
+    );
 
-    const usersWithoutCurrentUser = await User.countDocuments({
-      _id: {
-        $ne: req.userId,
-      },
-    });
+    const usersWithoutCurrentUser =
+      await User.countDocuments({
+        _id: {
+          $ne: req.userId,
+        },
+      });
 
-    console.log("USERS EXCLUDING CURRENT USER:", usersWithoutCurrentUser);
+    console.log(
+      "USERS EXCLUDING CURRENT USER:",
+      usersWithoutCurrentUser,
+    );
 
-    const completedUsers = await User.countDocuments({
-      _id: {
-        $ne: req.userId,
-      },
-      profileCompleted: true,
-    });
+    const completedUsers =
+      await User.countDocuments({
+        _id: {
+          $ne: req.userId,
+        },
+        profileCompleted: true,
+      });
 
-    console.log("COMPLETED USERS:", completedUsers);
+    console.log(
+      "COMPLETED USERS:",
+      completedUsers,
+    );
 
     /* -------------------------------------------------------
        GET USERS
@@ -243,7 +234,10 @@ router.get("/", auth, async (req, res) => {
       .limit(50)
       .lean();
 
-    console.log("VISIBLE PROFILES:", users.length);
+    console.log(
+      "VISIBLE PROFILES:",
+      users.length,
+    );
 
     console.log(
       "VISIBLE PROFILE IDS:",
@@ -260,18 +254,24 @@ router.get("/", auth, async (req, res) => {
 
     return res.status(500).json({
       message: "Could not load profiles",
-      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+
+      error:
+        process.env.NODE_ENV === "development"
+          ? error.message
+          : undefined,
     });
   }
 });
 
 /* =========================================================
    GET CURRENT USER
+   GET /profiles/me/current
 ========================================================= */
 
 router.get("/me/current", auth, async (req, res) => {
   try {
-    const user = await User.findById(req.userId).select("-passwordHash");
+    const user = await User.findById(req.userId)
+      .select("-passwordHash");
 
     if (!user) {
       return res.status(404).json({
@@ -281,7 +281,10 @@ router.get("/me/current", auth, async (req, res) => {
 
     return res.json(user);
   } catch (error) {
-    console.error("LOAD CURRENT USER ERROR:", error);
+    console.error(
+      "LOAD CURRENT USER ERROR:",
+      error,
+    );
 
     return res.status(500).json({
       message: "Could not load user profile",
@@ -291,6 +294,7 @@ router.get("/me/current", auth, async (req, res) => {
 
 /* =========================================================
    UPDATE CURRENT PROFILE
+   PUT /profiles/me
 ========================================================= */
 
 router.put("/me", auth, async (req, res) => {
@@ -304,7 +308,6 @@ router.put("/me", auth, async (req, res) => {
       occupation,
       city,
       height,
-      dashaNam,
       fatherName,
       motherName,
       fatherMobile,
@@ -327,7 +330,11 @@ router.put("/me", auth, async (req, res) => {
        AGE
     ------------------------------------------------------- */
 
-    if (age === undefined || age === null || age === "") {
+    if (
+      age === undefined ||
+      age === null ||
+      age === ""
+    ) {
       return res.status(400).json({
         message: "Age is required.",
       });
@@ -335,9 +342,13 @@ router.put("/me", auth, async (req, res) => {
 
     const numericAge = Number(age);
 
-    if (Number.isNaN(numericAge) || numericAge < 18) {
+    if (
+      Number.isNaN(numericAge) ||
+      numericAge < 18
+    ) {
       return res.status(400).json({
-        message: "Age must be a valid number and at least 18.",
+        message:
+          "Age must be a valid number and at least 18.",
       });
     }
 
@@ -345,7 +356,10 @@ router.put("/me", auth, async (req, res) => {
        GENDER
     ------------------------------------------------------- */
 
-    if (!gender || !["Male", "Female"].includes(gender)) {
+    if (
+      !gender ||
+      !["Male", "Female"].includes(gender)
+    ) {
       return res.status(400).json({
         message: "Valid gender is required.",
       });
@@ -369,6 +383,7 @@ router.put("/me", auth, async (req, res) => {
 
     const existingPhone = await User.findOne({
       phone: cleanPhone,
+
       _id: {
         $ne: req.userId,
       },
@@ -376,7 +391,8 @@ router.put("/me", auth, async (req, res) => {
 
     if (existingPhone) {
       return res.status(409).json({
-        message: "This phone number is already registered.",
+        message:
+          "This phone number is already registered.",
       });
     }
 
@@ -384,19 +400,12 @@ router.put("/me", auth, async (req, res) => {
        EDUCATION
     ------------------------------------------------------- */
 
-    if (education && !EDUCATION_OPTIONS.includes(education)) {
+    if (
+      education &&
+      !EDUCATION_OPTIONS.includes(education)
+    ) {
       return res.status(400).json({
         message: "Invalid education selected.",
-      });
-    }
-
-    /* -------------------------------------------------------
-       DASHANAM
-    ------------------------------------------------------- */
-
-    if (dashaNam && !DASHANAM_OPTIONS.includes(dashaNam)) {
-      return res.status(400).json({
-        message: "Invalid Dasha Nam selected.",
       });
     }
 
@@ -430,29 +439,35 @@ router.put("/me", auth, async (req, res) => {
 
       phone: cleanPhone,
 
-      education: education?.trim() || "",
+      education:
+        education?.trim() || "",
 
-      occupation: occupation?.trim() || "",
+      occupation:
+        occupation?.trim() || "",
 
-      city: city?.trim() || "",
+      city:
+        city?.trim() || "",
 
-      height: height?.trim() || "",
+      height:
+        height?.trim() || "",
 
-      dashaNam: dashaNam?.trim() || "",
+      fatherName:
+        fatherName?.trim() || "",
 
-      fatherName: fatherName?.trim() || "",
+      motherName:
+        motherName?.trim() || "",
 
-      motherName: motherName?.trim() || "",
+      fatherMobile:
+        fatherMobile?.trim() || "",
 
-      fatherMobile: fatherMobile?.trim() || "",
+      familyDetails:
+        familyDetails?.trim() || "",
 
-      familyDetails: familyDetails?.trim() || "",
-
-      bio: bio?.trim() || "",
+      bio:
+        bio?.trim() || "",
 
       interests: interestsArray,
 
-      /* VERY IMPORTANT */
       profileCompleted: true,
     };
 
@@ -460,10 +475,15 @@ router.put("/me", auth, async (req, res) => {
        SAVE
     ------------------------------------------------------- */
 
-    const updatedUser = await User.findByIdAndUpdate(req.userId, updates, {
-      new: true,
-      runValidators: true,
-    }).select("-passwordHash");
+    const updatedUser =
+      await User.findByIdAndUpdate(
+        req.userId,
+        updates,
+        {
+          new: true,
+          runValidators: true,
+        },
+      ).select("-passwordHash");
 
     if (!updatedUser) {
       return res.status(404).json({
@@ -471,123 +491,169 @@ router.put("/me", auth, async (req, res) => {
       });
     }
 
-    console.log("PROFILE UPDATED:", updatedUser._id);
+    console.log(
+      "PROFILE UPDATED:",
+      updatedUser._id,
+    );
 
-    console.log("PROFILE COMPLETED:", updatedUser.profileCompleted);
+    console.log(
+      "PROFILE COMPLETED:",
+      updatedUser.profileCompleted,
+    );
 
     return res.json({
-      message: "Profile updated successfully.",
+      message:
+        "Profile updated successfully.",
 
       user: updatedUser,
     });
   } catch (error) {
-    console.error("PROFILE UPDATE ERROR:", error);
+    console.error(
+      "PROFILE UPDATE ERROR:",
+      error,
+    );
 
     return res.status(400).json({
-      message: error.message || "Failed to update profile",
+      message:
+        error.message ||
+        "Failed to update profile",
     });
   }
 });
 
 /* =========================================================
    UPLOAD PROFILE PHOTO
+   POST /profiles/me/photo
 ========================================================= */
 
-router.post("/me/photo", auth, upload.single("photo"), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({
-        message: "No photo file provided.",
+router.post(
+  "/me/photo",
+  auth,
+  upload.single("photo"),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({
+          message: "No photo file provided.",
+        });
+      }
+
+      const photoRelativePath =
+        `/uploads/${req.file.filename}`;
+
+      const updatedUser =
+        await User.findByIdAndUpdate(
+          req.userId,
+          {
+            profilePhoto:
+              photoRelativePath,
+          },
+          {
+            new: true,
+          },
+        ).select("-passwordHash");
+
+      if (!updatedUser) {
+        return res.status(404).json({
+          message: "User not found.",
+        });
+      }
+
+      return res.json({
+        message:
+          "Profile photo uploaded successfully.",
+
+        profilePhoto:
+          photoRelativePath,
+
+        user: updatedUser,
+      });
+    } catch (error) {
+      console.error(
+        "PHOTO UPLOAD ERROR:",
+        error,
+      );
+
+      return res.status(500).json({
+        message:
+          "Failed to upload profile photo",
       });
     }
-
-    const photoRelativePath = `/uploads/${req.file.filename}`;
-
-    const updatedUser = await User.findByIdAndUpdate(
-      req.userId,
-      {
-        profilePhoto: photoRelativePath,
-      },
-      {
-        new: true,
-      },
-    ).select("-passwordHash");
-
-    if (!updatedUser) {
-      return res.status(404).json({
-        message: "User not found.",
-      });
-    }
-
-    return res.json({
-      message: "Profile photo uploaded successfully.",
-
-      profilePhoto: photoRelativePath,
-
-      user: updatedUser,
-    });
-  } catch (error) {
-    console.error("PHOTO UPLOAD ERROR:", error);
-
-    return res.status(500).json({
-      message: "Failed to upload profile photo",
-    });
-  }
-});
+  },
+);
 
 /* =========================================================
    UPLOAD BIODATA
+   POST /profiles/me/biodata
 ========================================================= */
 
-router.post("/me/biodata", auth, upload.single("biodata"), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({
-        message: "No biodata file provided.",
+router.post(
+  "/me/biodata",
+  auth,
+  upload.single("biodata"),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({
+          message:
+            "No biodata file provided.",
+        });
+      }
+
+      const biodataRelativePath =
+        `/uploads/${req.file.filename}`;
+
+      const updatedUser =
+        await User.findByIdAndUpdate(
+          req.userId,
+          {
+            biodataUrl:
+              biodataRelativePath,
+          },
+          {
+            new: true,
+          },
+        ).select("-passwordHash");
+
+      if (!updatedUser) {
+        return res.status(404).json({
+          message: "User not found.",
+        });
+      }
+
+      return res.json({
+        message:
+          "Biodata document uploaded successfully.",
+
+        biodataUrl:
+          biodataRelativePath,
+
+        user: updatedUser,
+      });
+    } catch (error) {
+      console.error(
+        "BIODATA UPLOAD ERROR:",
+        error,
+      );
+
+      return res.status(500).json({
+        message:
+          "Failed to upload biodata",
       });
     }
-
-    const biodataRelativePath = `/uploads/${req.file.filename}`;
-
-    const updatedUser = await User.findByIdAndUpdate(
-      req.userId,
-      {
-        biodataUrl: biodataRelativePath,
-      },
-      {
-        new: true,
-      },
-    ).select("-passwordHash");
-
-    if (!updatedUser) {
-      return res.status(404).json({
-        message: "User not found.",
-      });
-    }
-
-    return res.json({
-      message: "Biodata document uploaded successfully.",
-
-      biodataUrl: biodataRelativePath,
-
-      user: updatedUser,
-    });
-  } catch (error) {
-    console.error("BIODATA UPLOAD ERROR:", error);
-
-    return res.status(500).json({
-      message: "Failed to upload biodata",
-    });
-  }
-});
+  },
+);
 
 /* =========================================================
    GET SINGLE PROFILE
+   GET /profiles/:id
 ========================================================= */
 
 router.get("/:id", auth, async (req, res) => {
   try {
-    const user = await User.findById(req.params.id).select("-passwordHash");
+    const user = await User.findById(
+      req.params.id,
+    ).select("-passwordHash");
 
     if (!user) {
       return res.status(404).json({
@@ -597,7 +663,10 @@ router.get("/:id", auth, async (req, res) => {
 
     return res.json(user);
   } catch (error) {
-    console.error("GET PROFILE ERROR:", error);
+    console.error(
+      "GET PROFILE ERROR:",
+      error,
+    );
 
     return res.status(400).json({
       message: "Invalid profile id",
