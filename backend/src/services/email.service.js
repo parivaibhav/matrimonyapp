@@ -11,12 +11,12 @@ export async function sendVerificationOtp(email, otp) {
     throw new Error("RESEND_API_KEY is missing.");
   }
 
-  if (!process.env.EMAIL_FROM) {
+  if (!"onboarding@resend.dev") {
     throw new Error("EMAIL_FROM is missing.");
   }
 
   const { data, error } = await resend.emails.send({
-    from: process.env.EMAIL_FROM,
+    from: "onboarding@resend.dev",
     to: [email],
     subject: "Your verification code",
 
