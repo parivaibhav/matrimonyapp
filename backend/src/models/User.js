@@ -51,7 +51,7 @@ const userSchema = new mongoose.Schema(
     gender: {
       type: String,
       enum: ["Male", "Female"],
-      default: "Male",
+      trim: true,
     },
 
     age: {
@@ -97,7 +97,6 @@ const userSchema = new mongoose.Schema(
     dashaNam: {
       type: String,
       enum: DASHANAM_OPTIONS,
-      default: "",
       trim: true,
     },
 
@@ -163,6 +162,13 @@ const userSchema = new mongoose.Schema(
   },
 );
 
-export default mongoose.model("User", userSchema);
+// =============================================================
+// MODEL
+// =============================================================
 
+const User = mongoose.model("User", userSchema);
+
+export default User;
+
+// Export options for profile forms / validation
 export { DASHANAM_OPTIONS };
