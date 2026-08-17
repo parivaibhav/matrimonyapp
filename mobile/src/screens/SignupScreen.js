@@ -1,429 +1,6 @@
-// import React, { useState } from "react";
-// import {
-//   Alert,
-//   Image,
-//   KeyboardAvoidingView,
-//   Platform,
-//   Pressable,
-//   ScrollView,
-//   StyleSheet,
-//   Text,
-//   TextInput,
-//   View,
-// } from "react-native";
-// import { SafeAreaView } from "react-native-safe-area-context";
-// import * as ImagePicker from "expo-image-picker";
-// import AsyncStorage from "@react-native-async-storage/async-storage";
-// import { api } from "../api";
-// import { colors, shadow } from "../theme";
-// import { useResponsiveLayout } from "../utils/responsive";
-
-// const fields = [
-//   ["fullName", "Full name"],
-//   ["age", "Age"],
-//   ["phone", "Phone number"],
-//   ["email", "Email"],
-//   ["password", "Password"],
-//   ["education", "Education"],
-//   ["occupation", "Occupation"],
-//   ["city", "City"],
-//   ["height", "Height"],
-//   ["religion", "Religion"],
-//   ["community", "Community"],
-//   ["familyDetails", "Family details"],
-//   ["bio", "Short bio"],
-//   ["interests", "Interests (comma separated)"],
-// ];
-
-// // Helper pairs for 2-column grid layout on tablet screens
-// const tabletFieldPairs = [
-//   [["fullName", "Full name"], ["age", "Age"]],
-//   [["phone", "Phone number"], ["email", "Email"]],
-//   [["password", "Password"], ["city", "City"]],
-//   [["education", "Education"], ["occupation", "Occupation"]],
-//   [["height", "Height"], ["religion", "Religion"]],
-//   [["community", "Community"], ["interests", "Interests (comma separated)"]],
-//   [["familyDetails", "Family details"]],
-//   [["bio", "Short bio"]],
-// ];
-
-// export default function SignupScreen({ navigation }) {
-//   const [form, setForm] = useState({
-//     gender: "Male",
-//   });
-
-//   const [photo, setPhoto] = useState(null);
-//   const [loading, setLoading] = useState(false);
-
-//   const { isSmallPhone, isTablet } = useResponsiveLayout();
-
-//   const set = (key, value) => {
-//     setForm((prev) => ({
-//       ...prev,
-//       [key]: value,
-//     }));
-//   };
-
-//   async function choosePhoto() {
-//     try {
-//       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-//       if (!permission.granted) {
-//         Alert.alert(
-//           "Permission required",
-//           "Please allow photo access to select a profile photo."
-//         );
-//         return;
-//       }
-
-//       const result = await ImagePicker.launchImageLibraryAsync({
-//         mediaTypes: ["images"],
-//         quality: 0.8,
-//         allowsEditing: true,
-//         aspect: [1, 1],
-//       });
-
-//       if (!result.canceled && result.assets?.length > 0) {
-//         setPhoto(result.assets[0]);
-//       }
-//     } catch (error) {
-//       console.log("IMAGE PICKER ERROR:", error);
-//       Alert.alert("Error", "Could not select the image.");
-//     }
-//   }
-
-//   async function signup() {
-//     if (
-//       !form.fullName?.trim() ||
-//       !form.age ||
-//       !form.phone?.trim() ||
-//       !form.email?.trim() ||
-//       !form.password
-//     ) {
-//       Alert.alert(
-//         "Required",
-//         "Please enter name, age, phone, email and password."
-//       );
-//       return;
-//     }
-
-//     const age = Number(form.age);
-//     if (Number.isNaN(age) || age < 18) {
-//       Alert.alert("Invalid age", "You must be at least 18 years old.");
-//       return;
-//     }
-
-//     if (form.password.length < 6) {
-//       Alert.alert(
-//         "Invalid password",
-//         "Password must contain at least 6 characters."
-//       );
-//       return;
-//     }
-
-//     try {
-//       setLoading(true);
-
-//       const body = new FormData();
-//       Object.entries(form).forEach(([key, value]) => {
-//         body.append(key, String(value ?? ""));
-//       });
-
-//       if (photo?.uri) {
-//         const filename =
-//           photo.fileName || photo.uri.split("/").pop() || "profile.jpg";
-//         const type = photo.mimeType || "image/jpeg";
-
-//         body.append("profilePhoto", {
-//           uri: photo.uri,
-//           name: filename,
-//           type: type,
-//         });
-//       }
-
-//       const response = await api.post("/auth/signup", body);
-//       const { token, user } = response.data;
-
-//       if (!token) {
-//         throw new Error("Backend did not return authentication token.");
-//       }
-
-//       await AsyncStorage.setItem("token", token);
-//       await AsyncStorage.setItem("user", JSON.stringify(user));
-
-//       Alert.alert(
-//         "Account created",
-//         "Your profile has been created successfully.",
-//         [
-//           {
-//             text: "Continue",
-//             onPress: () => {
-//               navigation.goBack();
-//             },
-//           },
-//         ]
-//       );
-//     } catch (error) {
-//       let message = "Unable to create account.";
-//       if (error.response?.data?.message) {
-//         message = error.response.data.message;
-//       } else if (error.message === "Network Error") {
-//         message = "Cannot connect to backend server.";
-//       } else if (error.message) {
-//         message = error.message;
-//       }
-//       Alert.alert("Signup failed", message);
-//     } finally {
-//       setLoading(false);
-//     }
-//   }
-
-//   const renderInputField = ([key, placeholder]) => (
-//     <TextInput
-//       key={key}
-//       style={[
-//         styles.input,
-//         (key === "bio" || key === "familyDetails") && styles.multiline,
-//         isTablet && key !== "bio" && key !== "familyDetails" && { marginBottom: 0 },
-//       ]}
-//       placeholder={placeholder}
-//       placeholderTextColor={colors.muted}
-//       value={form[key] || ""}
-//       onChangeText={(value) => set(key, value)}
-//       secureTextEntry={key === "password"}
-//       multiline={key === "bio" || key === "familyDetails"}
-//       keyboardType={
-//         key === "age"
-//           ? "numeric"
-//           : key === "phone"
-//           ? "phone-pad"
-//           : key === "email"
-//           ? "email-address"
-//           : "default"
-//       }
-//       autoCapitalize={
-//         key === "email" ? "none" : key === "password" ? "none" : "sentences"
-//       }
-//     />
-//   );
-
-//   return (
-//     <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
-//       <KeyboardAvoidingView
-//         style={{ flex: 1 }}
-//         behavior={Platform.OS === "ios" ? "padding" : undefined}
-//       >
-//         <ScrollView
-//           style={styles.screen}
-//           contentContainerStyle={styles.container}
-//           keyboardShouldPersistTaps="handled"
-//         >
-//           <View style={[styles.card, isTablet && styles.tabletCard]}>
-//             <Text style={[styles.title, isSmallPhone && { fontSize: 24 }]}>
-//               Create your profile
-//             </Text>
-//             <Text style={styles.subtitle}>
-//               Add a few details to help others discover you.
-//             </Text>
-
-//             {/* Profile photo */}
-//             <Pressable style={styles.photoBox} onPress={choosePhoto}>
-//               {photo?.uri ? (
-//                 <Image source={{ uri: photo.uri }} style={styles.photo} />
-//               ) : (
-//                 <Text style={styles.photoText}>+ Add Profile Photo</Text>
-//               )}
-//             </Pressable>
-
-//             {/* Gender */}
-//             <Text style={styles.label}>Gender</Text>
-//             <View style={styles.genderRow}>
-//               <Pressable
-//                 style={[
-//                   styles.gender,
-//                   form.gender === "Male" && styles.selected,
-//                   { flex: 1 },
-//                 ]}
-//                 onPress={() => set("gender", "Male")}
-//               >
-//                 <Text
-//                   style={[
-//                     styles.genderText,
-//                     form.gender === "Male" && styles.selectedText,
-//                   ]}
-//                 >
-//                   Male
-//                 </Text>
-//               </Pressable>
-
-//               <Pressable
-//                 style={[
-//                   styles.gender,
-//                   form.gender === "Female" && styles.selected,
-//                   { flex: 1 },
-//                 ]}
-//                 onPress={() => set("gender", "Female")}
-//               >
-//                 <Text
-//                   style={[
-//                     styles.genderText,
-//                     form.gender === "Female" && styles.selectedText,
-//                   ]}
-//                 >
-//                   Female
-//                 </Text>
-//               </Pressable>
-//             </View>
-
-//             {/* Render fields (2-columns on tablet, single column on phone) */}
-//             {isTablet
-//               ? tabletFieldPairs.map((pair, idx) => (
-//                   <View key={idx} style={styles.fieldRow}>
-//                     {pair.map(([key, placeholder]) => (
-//                       <View key={key} style={{ flex: 1 }}>
-//                         {renderInputField([key, placeholder])}
-//                       </View>
-//                     ))}
-//                   </View>
-//                 ))
-//               : fields.map((field) => renderInputField(field))}
-
-//             {/* Signup button */}
-//             <Pressable
-//               style={[styles.button, loading && styles.buttonDisabled]}
-//               onPress={signup}
-//               disabled={loading}
-//             >
-//               <Text style={styles.buttonText}>
-//                 {loading ? "Creating..." : "Create Profile"}
-//               </Text>
-//             </Pressable>
-//           </View>
-//         </ScrollView>
-//       </KeyboardAvoidingView>
-//     </SafeAreaView>
-//   );
-// }
-
-// const styles = StyleSheet.create({
-//   screen: {
-//     flex: 1,
-//     backgroundColor: colors.bg,
-//   },
-//   container: {
-//     padding: 20,
-//     paddingBottom: 50,
-//   },
-//   card: {
-//     width: "100%",
-//     maxWidth: 680,
-//     alignSelf: "center",
-//   },
-//   tabletCard: {
-//     backgroundColor: "#fff",
-//     padding: 32,
-//     borderRadius: 24,
-//     ...shadow,
-//   },
-//   title: {
-//     fontSize: 28,
-//     fontWeight: "900",
-//     color: colors.text,
-//   },
-//   subtitle: {
-//     color: colors.muted,
-//     marginVertical: 8,
-//     lineHeight: 20,
-//     fontSize: 15,
-//   },
-//   photoBox: {
-//     height: 160,
-//     borderRadius: 20,
-//     backgroundColor: "#fff",
-//     borderWidth: 1,
-//     borderColor: colors.border,
-//     marginVertical: 18,
-//     alignItems: "center",
-//     justifyContent: "center",
-//     overflow: "hidden",
-//   },
-//   photo: {
-//     width: "100%",
-//     height: "100%",
-//   },
-//   photoText: {
-//     color: colors.primary,
-//     fontWeight: "800",
-//     fontSize: 15,
-//   },
-//   label: {
-//     fontWeight: "700",
-//     marginBottom: 8,
-//     color: colors.text,
-//     fontSize: 15,
-//   },
-//   genderRow: {
-//     flexDirection: "row",
-//     gap: 12,
-//     marginBottom: 16,
-//   },
-//   gender: {
-//     backgroundColor: "#fff",
-//     borderRadius: 12,
-//     padding: 14,
-//     borderWidth: 1,
-//     borderColor: colors.border,
-//     alignItems: "center",
-//   },
-//   selected: {
-//     borderColor: colors.primary,
-//     backgroundColor: "#EFF6FF",
-//   },
-//   genderText: {
-//     color: colors.text,
-//     fontWeight: "600",
-//   },
-//   selectedText: {
-//     color: colors.primary,
-//     fontWeight: "800",
-//   },
-//   fieldRow: {
-//     flexDirection: "row",
-//     gap: 14,
-//     marginBottom: 14,
-//   },
-//   input: {
-//     backgroundColor: "#fff",
-//     borderWidth: 1,
-//     borderColor: colors.border,
-//     padding: 14,
-//     borderRadius: 13,
-//     marginBottom: 11,
-//     fontSize: 16,
-//     color: colors.text,
-//   },
-//   multiline: {
-//     minHeight: 90,
-//     textAlignVertical: "top",
-//   },
-//   button: {
-//     backgroundColor: colors.primary,
-//     padding: 16,
-//     borderRadius: 14,
-//     alignItems: "center",
-//     marginTop: 16,
-//   },
-//   buttonDisabled: {
-//     opacity: 0.6,
-//   },
-//   buttonText: {
-//     color: "#fff",
-//     fontWeight: "800",
-//     fontSize: 16,
-//   },
-// });
 import React, { useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
@@ -435,108 +12,90 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Ionicons } from "@expo/vector-icons";
 
 import { api } from "../api";
 import { colors, shadow } from "../theme";
 import { useResponsiveLayout } from "../utils/responsive";
 
 export default function SignupScreen({ navigation }) {
-  const [form, setForm] = useState({
-    email: "",
-    password: "",
-    confirmPassword: "",
-  });
+  const [email, setEmail] = useState("");
+  const [otp, setOtp] = useState("");
 
-  const [loading, setLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [sendingOtp, setSendingOtp] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+
+  const [otpSent, setOtpSent] = useState(false);
+  const [remainingSeconds, setRemainingSeconds] = useState(0);
 
   const { isSmallPhone, isTablet } = useResponsiveLayout();
 
-  const set = (key, value) => {
-    setForm((prev) => ({
-      ...prev,
-      [key]: value,
-    }));
-  };
+  /* =========================================================
+     EMAIL VALIDATION
+  ========================================================= */
 
-  async function signup() {
-    const email = form.email.trim();
-    const password = form.password;
-    const confirmPassword = form.confirmPassword;
+  function getEmail() {
+    const normalizedEmail = email.trim().toLowerCase();
 
-    // Required validation
-    if (!email || !password || !confirmPassword) {
-      Alert.alert(
-        "Required",
-        "Please enter your email, password and re-type password.",
-      );
-      return;
+    if (!normalizedEmail) {
+      Alert.alert("Email required", "Please enter your email address.");
+      return null;
     }
 
-    // Email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-    if (!emailRegex.test(email)) {
+    if (!emailRegex.test(normalizedEmail)) {
       Alert.alert("Invalid email", "Please enter a valid email address.");
-      return;
+      return null;
     }
 
-    // Password validation
-    if (password.length < 6) {
-      Alert.alert(
-        "Invalid password",
-        "Password must contain at least 6 characters.",
-      );
-      return;
-    }
+    return normalizedEmail;
+  }
 
-    // Confirm password validation
-    if (password !== confirmPassword) {
-      Alert.alert(
-        "Password mismatch",
-        "Password and re-type password do not match.",
-      );
+  /* =========================================================
+     SEND OTP
+  ========================================================= */
+
+  async function sendOtp() {
+    const normalizedEmail = getEmail();
+
+    if (!normalizedEmail) return;
+
+    if (remainingSeconds > 0) {
       return;
     }
 
     try {
-      setLoading(true);
+      setSendingOtp(true);
 
-      // Do NOT send confirmPassword to backend
-      const body = {
-        email,
-        password,
-      };
+      console.log("SEND OTP REQUEST:", {
+        email: normalizedEmail,
+      });
 
-      const response = await api.post("/auth/signup", body);
+      const response = await api.post("/auth/signup", {
+        email: normalizedEmail,
+      });
 
-      const { token, user } = response.data;
+      console.log("SEND OTP RESPONSE:", response.data);
 
-      if (!token) {
-        throw new Error("Backend did not return authentication token.");
-      }
+      setEmail(normalizedEmail);
+      setOtp("");
+      setOtpSent(true);
 
-      await AsyncStorage.setItem("token", token);
-      await AsyncStorage.setItem("user", JSON.stringify(user));
+      const expiresIn = Number(response.data?.expiresIn) || 600;
+
+      setRemainingSeconds(expiresIn);
 
       Alert.alert(
-        "Account created",
-        "Your account has been created successfully.",
-        [
-          {
-            text: "Continue",
-            onPress: () => {
-              navigation.goBack();
-            },
-          },
-        ],
+        "OTP sent",
+        `A verification code has been sent to ${normalizedEmail}.`,
       );
     } catch (error) {
-      console.log("SIGNUP ERROR:", error);
+      console.log("SEND OTP ERROR:", error);
 
-      let message = "Unable to create account.";
+      console.log("SEND OTP ERROR RESPONSE:", error.response?.data);
+
+      let message = "Unable to send verification code.";
 
       if (error.response?.data?.message) {
         message = error.response.data.message;
@@ -546,11 +105,147 @@ export default function SignupScreen({ navigation }) {
         message = error.message;
       }
 
-      Alert.alert("Signup failed", message);
+      Alert.alert("Send OTP failed", message);
     } finally {
-      setLoading(false);
+      setSendingOtp(false);
     }
   }
+
+  /* =========================================================
+     VERIFY OTP
+  ========================================================= */
+
+  async function verifyOtp() {
+    const normalizedEmail = getEmail();
+
+    if (!normalizedEmail) return;
+
+    const cleanOtp = otp.replace(/\D/g, "");
+
+    if (!cleanOtp) {
+      Alert.alert("OTP required", "Please enter the verification code.");
+      return;
+    }
+
+    if (cleanOtp.length !== 6) {
+      Alert.alert("Invalid OTP", "Please enter the 6-digit verification code.");
+      return;
+    }
+
+    try {
+      setVerifying(true);
+
+      console.log("VERIFY OTP REQUEST:", {
+        email: normalizedEmail,
+        otp: cleanOtp,
+      });
+
+      const response = await api.post("/auth/verify-otp", {
+        email: normalizedEmail,
+        otp: cleanOtp,
+        purpose: "signup",
+      });
+
+      console.log("VERIFY OTP RESPONSE:", response.data);
+
+      const { token, user } = response.data || {};
+
+      /*
+       * Store token/user if backend returns them.
+       *
+       * If your backend only verifies the email and
+       * creates the user later, remove this section.
+       */
+
+      if (token) {
+        const AsyncStorage =
+          require("@react-native-async-storage/async-storage").default;
+
+        await AsyncStorage.setItem("token", token);
+
+        if (user) {
+          await AsyncStorage.setItem("user", JSON.stringify(user));
+        }
+      }
+
+      Alert.alert(
+        "Email verified",
+        response.data?.message || "Your email has been verified successfully.",
+        [
+          {
+            text: "Continue",
+            onPress: () => {
+              if (navigation.canGoBack()) {
+                navigation.goBack();
+              }
+            },
+          },
+        ],
+      );
+    } catch (error) {
+      console.log("VERIFY OTP ERROR:", error);
+
+      console.log("VERIFY OTP ERROR RESPONSE:", error.response?.data);
+
+      let message = "Unable to verify the code.";
+
+      if (error.response?.data?.message) {
+        message = error.response.data.message;
+      } else if (error.message === "Network Error") {
+        message = "Cannot connect to backend server.";
+      } else if (error.message) {
+        message = error.message;
+      }
+
+      Alert.alert("Verification failed", message);
+    } finally {
+      setVerifying(false);
+    }
+  }
+
+  /* =========================================================
+     OTP INPUT
+  ========================================================= */
+
+  function handleOtpChange(value) {
+    const cleanValue = value.replace(/\D/g, "").slice(0, 6);
+
+    setOtp(cleanValue);
+  }
+
+  /* =========================================================
+     TIMER
+  ========================================================= */
+
+  React.useEffect(() => {
+    if (remainingSeconds <= 0) {
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setRemainingSeconds((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          return 0;
+        }
+
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [remainingSeconds]);
+
+  function formatTime(seconds) {
+    const minutes = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+
+    return `${minutes}:${String(secs).padStart(2, "0")}`;
+  }
+
+  /* =========================================================
+     UI
+  ========================================================= */
 
   return (
     <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
@@ -560,144 +255,261 @@ export default function SignupScreen({ navigation }) {
       >
         <ScrollView
           style={styles.screen}
-          contentContainerStyle={styles.container}
+          contentContainerStyle={[
+            styles.container,
+            isSmallPhone && styles.smallPhoneContainer,
+          ]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
           <View style={[styles.card, isTablet && styles.tabletCard]}>
-            {/* Header */}
+            {/* =================================================
+                HEADER
+            ================================================= */}
+
             <View style={styles.header}>
-              <Text style={[styles.title, isSmallPhone && { fontSize: 25 }]}>
+              <View style={styles.iconCircle}>
+                <Ionicons
+                  name="mail-open-outline"
+                  size={30}
+                  color={colors.primary}
+                />
+              </View>
+
+              <Text style={[styles.title, isSmallPhone && styles.smallTitle]}>
                 Create your account
               </Text>
 
               <Text style={styles.subtitle}>
-                Enter your email and create a secure password.
+                Enter your email and verify it with a one-time code.
               </Text>
             </View>
 
-            {/* Email */}
+            {/* =================================================
+                EMAIL INPUT
+            ================================================= */}
+
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Email</Text>
+              <Text style={styles.label}>Email address</Text>
 
-              <TextInput
-                style={styles.input}
-                placeholder="Enter your email"
-                placeholderTextColor={colors.muted}
-                value={form.email}
-                onChangeText={(value) => set("email", value)}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-                editable={!loading}
-              />
-            </View>
-
-            {/* Password */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Password</Text>
-
-              <View style={styles.passwordContainer}>
-                <TextInput
-                  style={styles.passwordInput}
-                  placeholder="Create a password"
-                  placeholderTextColor={colors.muted}
-                  value={form.password}
-                  onChangeText={(value) => set("password", value)}
-                  secureTextEntry={!showPassword}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  editable={!loading}
+              <View
+                style={[
+                  styles.inputContainer,
+                  email.length > 0 && styles.inputContainerActive,
+                ]}
+              >
+                <Ionicons
+                  name="mail-outline"
+                  size={20}
+                  color={email.length > 0 ? colors.primary : colors.muted}
+                  style={styles.inputIcon}
                 />
 
+                <TextInput
+                  style={styles.input}
+                  placeholder="you@example.com"
+                  placeholderTextColor={colors.muted}
+                  value={email}
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoComplete="email"
+                  textContentType="emailAddress"
+                  editable={!sendingOtp && !verifying}
+                  returnKeyType="next"
+                />
+              </View>
+
+              <Text style={styles.helperText}>
+                Enter the email address you want to verify.
+              </Text>
+            </View>
+
+            {/* =================================================
+                OTP INPUT
+            ================================================= */}
+
+            <View style={styles.inputGroup}>
+              <View style={styles.labelRow}>
+                <Text style={styles.label}>Verification code</Text>
+
+                {otpSent && (
+                  <View style={styles.sentBadge}>
+                    <View style={styles.sentDot} />
+
+                    <Text style={styles.sentText}>Code sent</Text>
+                  </View>
+                )}
+              </View>
+
+              <View
+                style={[
+                  styles.otpRow,
+                  otp.length > 0 && styles.otpRowActive,
+                  otp.length === 6 && styles.otpRowComplete,
+                ]}
+              >
+                <View style={styles.otpInputWrapper}>
+                  <Ionicons
+                    name="keypad-outline"
+                    size={20}
+                    color={otp.length > 0 ? colors.primary : colors.muted}
+                    style={styles.otpIcon}
+                  />
+
+                  <TextInput
+                    style={styles.otpInput}
+                    placeholder="Enter 6-digit OTP"
+                    placeholderTextColor={colors.muted}
+                    value={otp}
+                    onChangeText={handleOtpChange}
+                    keyboardType="number-pad"
+                    maxLength={6}
+                    editable={!verifying}
+                    returnKeyType="done"
+                    onSubmitEditing={verifyOtp}
+                  />
+                </View>
+
+                {/* SEND OTP INSIDE OTP ROW */}
+
                 <Pressable
-                  style={styles.showButton}
-                  onPress={() => setShowPassword((prev) => !prev)}
+                  style={[
+                    styles.sendOtpButton,
+                    (sendingOtp || remainingSeconds > 0) &&
+                      styles.sendOtpButtonDisabled,
+                  ]}
+                  onPress={sendOtp}
+                  disabled={sendingOtp || remainingSeconds > 0 || verifying}
                 >
-                  <Text style={styles.showText}>
-                    {showPassword ? "Hide" : "Show"}
-                  </Text>
+                  {sendingOtp ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.sendOtpText}>
+                      {remainingSeconds > 0
+                        ? formatTime(remainingSeconds)
+                        : "Send OTP"}
+                    </Text>
+                  )}
                 </Pressable>
               </View>
 
               <Text style={styles.helperText}>
-                Password must contain at least 6 characters.
+                A 6-digit verification code will be sent to your email.
               </Text>
             </View>
 
-            {/* Re-type Password */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Re-type Password</Text>
+            {/* =================================================
+                VERIFY BUTTON
+            ================================================= */}
 
-              <View
-                style={[
-                  styles.passwordContainer,
-                  form.confirmPassword.length > 0 &&
-                    form.password !== form.confirmPassword &&
-                    styles.errorBorder,
-                  form.confirmPassword.length > 0 &&
-                    form.password === form.confirmPassword &&
-                    styles.successBorder,
-                ]}
-              >
-                <TextInput
-                  style={styles.passwordInput}
-                  placeholder="Re-enter your password"
-                  placeholderTextColor={colors.muted}
-                  value={form.confirmPassword}
-                  onChangeText={(value) => set("confirmPassword", value)}
-                  secureTextEntry={!showConfirmPassword}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  editable={!loading}
-                />
-
-                <Pressable
-                  style={styles.showButton}
-                  onPress={() => setShowConfirmPassword((prev) => !prev)}
-                >
-                  <Text style={styles.showText}>
-                    {showConfirmPassword ? "Hide" : "Show"}
-                  </Text>
-                </Pressable>
-              </View>
-
-              {form.confirmPassword.length > 0 &&
-                form.password !== form.confirmPassword && (
-                  <Text style={styles.errorText}>Passwords do not match.</Text>
-                )}
-
-              {form.confirmPassword.length > 0 &&
-                form.password === form.confirmPassword && (
-                  <Text style={styles.successText}>Passwords match.</Text>
-                )}
-            </View>
-
-            {/* Signup Button */}
             <Pressable
-              style={[styles.button, loading && styles.buttonDisabled]}
-              onPress={signup}
-              disabled={loading}
+              style={({ pressed }) => [
+                styles.verifyButton,
+                (verifying || otp.length !== 6) && styles.verifyButtonDisabled,
+                pressed &&
+                  !verifying &&
+                  otp.length === 6 &&
+                  styles.buttonPressed,
+              ]}
+              onPress={verifyOtp}
+              disabled={verifying || otp.length !== 6}
             >
-              <Text style={styles.buttonText}>
-                {loading ? "Creating account..." : "Create Account"}
-              </Text>
+              {verifying ? (
+                <View style={styles.loadingContent}>
+                  <ActivityIndicator size="small" color="#fff" />
+
+                  <Text style={styles.buttonText}>Verifying...</Text>
+                </View>
+              ) : (
+                <View style={styles.buttonContent}>
+                  <Text style={styles.buttonText}>Verify Email</Text>
+
+                  <Ionicons
+                    name="checkmark-circle-outline"
+                    size={21}
+                    color="#fff"
+                  />
+                </View>
+              )}
             </Pressable>
 
-            {/* Login */}
+            {/* =================================================
+                RESEND
+            ================================================= */}
+
+            <View style={styles.resendRow}>
+              <Text style={styles.resendText}>Didn't receive the code?</Text>
+
+              {remainingSeconds > 0 ? (
+                <Text style={styles.timerText}>
+                  Resend in {formatTime(remainingSeconds)}
+                </Text>
+              ) : (
+                <Pressable onPress={sendOtp} disabled={sendingOtp || verifying}>
+                  <Text style={styles.resendLink}>Resend OTP</Text>
+                </Pressable>
+              )}
+            </View>
+
+            {/* =================================================
+                INFO BOX
+            ================================================= */}
+
+            <View style={styles.infoBox}>
+              <View style={styles.infoIcon}>
+                <Ionicons
+                  name="shield-checkmark-outline"
+                  size={20}
+                  color={colors.primary}
+                />
+              </View>
+
+              <View style={styles.infoContent}>
+                <Text style={styles.infoTitle}>Secure verification</Text>
+
+                <Text style={styles.infoText}>
+                  We use email OTP verification instead of passwords. Never
+                  share your verification code with anyone.
+                </Text>
+              </View>
+            </View>
+
+            {/* =================================================
+                LOGIN
+            ================================================= */}
+
             <View style={styles.loginRow}>
               <Text style={styles.loginText}>Already have an account?</Text>
 
-              <Pressable onPress={() => navigation.goBack()} disabled={loading}>
-                <Text style={styles.loginLink}> Login</Text>
+              <Pressable
+                onPress={() => navigation.goBack()}
+                disabled={sendingOtp || verifying}
+                hitSlop={8}
+              >
+                <Text style={styles.loginLink}>Login</Text>
               </Pressable>
             </View>
+
+            {/* =================================================
+                TERMS
+            ================================================= */}
+
+            <Text style={styles.termsText}>
+              By continuing, you agree to our Terms of Service and Privacy
+              Policy.
+            </Text>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
+
+/* =========================================================
+   STYLES
+========================================================= */
 
 const styles = StyleSheet.create({
   screen: {
@@ -708,8 +520,13 @@ const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
     padding: 20,
-    paddingBottom: 50,
+    paddingBottom: 40,
     justifyContent: "center",
+  },
+
+  smallPhoneContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 20,
   },
 
   card: {
@@ -720,120 +537,229 @@ const styles = StyleSheet.create({
 
   tabletCard: {
     backgroundColor: "#fff",
-    padding: 34,
-    borderRadius: 24,
+    padding: 36,
+    borderRadius: 26,
     ...shadow,
   },
 
+  /* =======================================================
+     HEADER
+  ======================================================= */
+
   header: {
-    marginBottom: 28,
+    alignItems: "center",
+    marginBottom: 30,
+  },
+
+  iconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "#EFF6FF",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 18,
   },
 
   title: {
     fontSize: 29,
     fontWeight: "900",
     color: colors.text,
-    letterSpacing: -0.5,
+    textAlign: "center",
+    letterSpacing: -0.6,
+  },
+
+  smallTitle: {
+    fontSize: 25,
   },
 
   subtitle: {
     color: colors.muted,
-    marginTop: 8,
+    marginTop: 9,
     fontSize: 15,
-    lineHeight: 21,
+    lineHeight: 22,
+    textAlign: "center",
+    maxWidth: 400,
   },
+
+  /* =======================================================
+     INPUT
+  ======================================================= */
 
   inputGroup: {
     marginBottom: 20,
+  },
+
+  labelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 9,
   },
 
   label: {
     fontSize: 14,
     fontWeight: "800",
     color: colors.text,
-    marginBottom: 8,
   },
 
-  input: {
+  inputContainer: {
+    height: 56,
     backgroundColor: "#fff",
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 14,
-    height: 54,
-    paddingHorizontal: 16,
-    fontSize: 16,
-    color: colors.text,
-  },
-
-  passwordContainer: {
-    height: 54,
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 14,
+    borderRadius: 15,
     flexDirection: "row",
     alignItems: "center",
   },
 
-  passwordInput: {
+  inputContainerActive: {
+    borderColor: colors.primary,
+  },
+
+  inputIcon: {
+    marginLeft: 16,
+    marginRight: 4,
+  },
+
+  input: {
     flex: 1,
     height: "100%",
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
+    paddingRight: 16,
     fontSize: 16,
     color: colors.text,
-  },
-
-  showButton: {
-    paddingHorizontal: 14,
-    height: "100%",
-    justifyContent: "center",
-  },
-
-  showText: {
-    color: colors.primary,
-    fontWeight: "800",
-    fontSize: 13,
   },
 
   helperText: {
     color: colors.muted,
     fontSize: 12,
-    marginTop: 7,
-  },
-
-  errorBorder: {
-    borderColor: "#EF4444",
-  },
-
-  successBorder: {
-    borderColor: "#22C55E",
-  },
-
-  errorText: {
-    color: "#EF4444",
-    fontSize: 12,
-    fontWeight: "600",
-    marginTop: 7,
-  },
-
-  successText: {
-    color: "#16A34A",
-    fontSize: 12,
-    fontWeight: "600",
-    marginTop: 7,
-  },
-
-  button: {
-    backgroundColor: colors.primary,
-    height: 56,
-    borderRadius: 15,
-    alignItems: "center",
-    justifyContent: "center",
+    lineHeight: 18,
     marginTop: 8,
   },
 
-  buttonDisabled: {
-    opacity: 0.6,
+  /* =======================================================
+     OTP
+  ======================================================= */
+
+  otpRow: {
+    height: 58,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 15,
+    flexDirection: "row",
+    alignItems: "center",
+    overflow: "hidden",
+  },
+
+  otpRowActive: {
+    borderColor: colors.primary,
+  },
+
+  otpRowComplete: {
+    borderColor: "#22C55E",
+  },
+
+  otpInputWrapper: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  otpIcon: {
+    marginLeft: 15,
+    marginRight: 4,
+  },
+
+  otpInput: {
+    flex: 1,
+    height: "100%",
+    paddingHorizontal: 10,
+    fontSize: 16,
+    color: colors.text,
+  },
+
+  sendOtpButton: {
+    height: "100%",
+    minWidth: 92,
+    paddingHorizontal: 14,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  sendOtpButtonDisabled: {
+    opacity: 0.55,
+  },
+
+  sendOtpText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "900",
+  },
+
+  sentBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F0FDF4",
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 20,
+  },
+
+  sentDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#22C55E",
+    marginRight: 5,
+  },
+
+  sentText: {
+    color: "#16A34A",
+    fontSize: 11,
+    fontWeight: "800",
+  },
+
+  /* =======================================================
+     VERIFY BUTTON
+  ======================================================= */
+
+  verifyButton: {
+    height: 56,
+    backgroundColor: colors.primary,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 2,
+  },
+
+  verifyButtonDisabled: {
+    opacity: 0.45,
+  },
+
+  buttonPressed: {
+    opacity: 0.85,
+    transform: [
+      {
+        scale: 0.99,
+      },
+    ],
+  },
+
+  buttonContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  },
+
+  loadingContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
   },
 
   buttonText: {
@@ -842,11 +768,85 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
 
+  /* =======================================================
+     RESEND
+  ======================================================= */
+
+  resendRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 17,
+    minHeight: 24,
+  },
+
+  resendText: {
+    color: colors.muted,
+    fontSize: 13,
+  },
+
+  resendLink: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: "900",
+    marginLeft: 5,
+  },
+
+  timerText: {
+    color: colors.muted,
+    fontSize: 13,
+    fontWeight: "700",
+    marginLeft: 5,
+  },
+
+  /* =======================================================
+     INFO
+  ======================================================= */
+
+  infoBox: {
+    flexDirection: "row",
+    backgroundColor: "#EFF6FF",
+    borderRadius: 16,
+    padding: 15,
+    marginTop: 20,
+  },
+
+  infoIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+
+  infoContent: {
+    flex: 1,
+  },
+
+  infoTitle: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: "800",
+    marginBottom: 4,
+  },
+
+  infoText: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+
+  /* =======================================================
+     LOGIN
+  ======================================================= */
+
   loginRow: {
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
-    marginTop: 22,
+    marginTop: 23,
   },
 
   loginText: {
@@ -856,7 +856,21 @@ const styles = StyleSheet.create({
 
   loginLink: {
     color: colors.primary,
-    fontWeight: "800",
+    fontWeight: "900",
     fontSize: 14,
+    marginLeft: 5,
+  },
+
+  /* =======================================================
+     TERMS
+  ======================================================= */
+
+  termsText: {
+    color: colors.muted,
+    fontSize: 11,
+    lineHeight: 17,
+    textAlign: "center",
+    marginTop: 22,
+    paddingHorizontal: 15,
   },
 });

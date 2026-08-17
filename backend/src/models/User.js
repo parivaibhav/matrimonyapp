@@ -1,5 +1,9 @@
 import mongoose from "mongoose";
 
+/* =========================================================
+   CONSTANTS
+========================================================= */
+
 const DASHANAM_OPTIONS = [
   "Giri",
   "Puri",
@@ -14,11 +18,17 @@ const DASHANAM_OPTIONS = [
   "Gosai",
 ];
 
+const OTP_PURPOSES = ["signup", "login"];
+
+/* =========================================================
+   USER SCHEMA
+========================================================= */
+
 const userSchema = new mongoose.Schema(
   {
-    // =========================================================
-    // ACCOUNT DETAILS
-    // =========================================================
+    // =======================================================
+    // ACCOUNT
+    // =======================================================
 
     email: {
       type: String,
@@ -26,20 +36,53 @@ const userSchema = new mongoose.Schema(
       unique: true,
       lowercase: true,
       trim: true,
+      index: true,
     },
 
-    passwordHash: {
+    emailVerified: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
+    // =======================================================
+    // OTP
+    // =======================================================
+
+    emailOtpHash: {
       type: String,
-      required: true,
+      default: null,
     },
 
-    // =========================================================
-    // PROFILE DETAILS
-    // =========================================================
+    emailOtpExpiresAt: {
+      type: Date,
+      default: null,
+    },
+
+    emailOtpAttempts: {
+      type: Number,
+      default: 0,
+    },
+
+    emailOtpLastSentAt: {
+      type: Date,
+      default: null,
+    },
+
+    emailOtpPurpose: {
+      type: String,
+      enum: OTP_PURPOSES,
+      default: null,
+    },
+
+    // =======================================================
+    // PROFILE
+    // =======================================================
 
     profilePhoto: {
       type: String,
       default: "",
+      trim: true,
     },
 
     fullName: {
@@ -90,9 +133,9 @@ const userSchema = new mongoose.Schema(
       trim: true,
     },
 
-    // =========================================================
-    // DASHANAMI DETAILS
-    // =========================================================
+    // =======================================================
+    // DASHANAMI
+    // =======================================================
 
     dashaNam: {
       type: String,
@@ -100,9 +143,9 @@ const userSchema = new mongoose.Schema(
       trim: true,
     },
 
-    // =========================================================
-    // FAMILY DETAILS
-    // =========================================================
+    // =======================================================
+    // FAMILY
+    // =======================================================
 
     fatherName: {
       type: String,
@@ -128,9 +171,9 @@ const userSchema = new mongoose.Schema(
       trim: true,
     },
 
-    // =========================================================
-    // OTHER PROFILE DETAILS
-    // =========================================================
+    // =======================================================
+    // OTHER PROFILE
+    // =======================================================
 
     bio: {
       type: String,
@@ -141,6 +184,7 @@ const userSchema = new mongoose.Schema(
     biodataUrl: {
       type: String,
       default: "",
+      trim: true,
     },
 
     interests: {
@@ -148,13 +192,14 @@ const userSchema = new mongoose.Schema(
       default: [],
     },
 
-    // =========================================================
+    // =======================================================
     // PROFILE STATUS
-    // =========================================================
+    // =======================================================
 
     profileCompleted: {
       type: Boolean,
       default: false,
+      index: true,
     },
   },
   {
@@ -162,13 +207,12 @@ const userSchema = new mongoose.Schema(
   },
 );
 
-// =============================================================
-// MODEL
-// =============================================================
+/* =========================================================
+   MODEL
+========================================================= */
 
 const User = mongoose.model("User", userSchema);
 
 export default User;
 
-// Export options for profile forms / validation
 export { DASHANAM_OPTIONS };

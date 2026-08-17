@@ -18,6 +18,7 @@ import InterestsScreen from "./src/screens/InterestsScreen";
 import ProfileScreen from "./src/screens/ProfileScreen";
 import ProfileDetailScreen from "./src/screens/ProfileDetailScreen";
 import NotificationsScreen from "./src/screens/NotificationsScreen";
+import CompleteProfileScreen from "./src/screens/CompleteProfileScreen";
 
 import { colors } from "./src/theme";
 import { useResponsiveLayout } from "./src/utils/responsive";
@@ -209,6 +210,10 @@ export default function App() {
               <Stack.Screen
                 name="Notifications"
                 component={NotificationsScreen}
+              />
+              <Stack.Screen
+                name="CompleteProfile"
+                component={CompleteProfileScreen}
               />
             </>
           )}
