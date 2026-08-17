@@ -4,20 +4,6 @@ import mongoose from "mongoose";
    CONSTANTS
 ========================================================= */
 
-const DASHANAM_OPTIONS = [
-  "Giri",
-  "Puri",
-  "Bharati",
-  "Ashram",
-  "Saraswati",
-  "Aranya",
-  "Van",
-  "Parvat",
-  "Sagar",
-  "Tirtha",
-  "Gosai",
-];
-
 const OTP_PURPOSES = ["signup", "login"];
 
 /* =========================================================
@@ -134,16 +120,6 @@ const userSchema = new mongoose.Schema(
     },
 
     // =======================================================
-    // DASHANAMI
-    // =======================================================
-
-    dashaNam: {
-      type: String,
-      enum: DASHANAM_OPTIONS,
-      trim: true,
-    },
-
-    // =======================================================
     // FAMILY
     // =======================================================
 
@@ -214,5 +190,3 @@ const userSchema = new mongoose.Schema(
 const User = mongoose.model("User", userSchema);
 
 export default User;
-
-export { DASHANAM_OPTIONS };
