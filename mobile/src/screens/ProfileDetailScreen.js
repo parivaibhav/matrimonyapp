@@ -1,1587 +1,1047 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
-
-import {
-  SafeAreaView,
-  useSafeAreaInsets,
-} from "react-native-safe-area-context";
-
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import { api, imageUrl } from "../api";
-import { colors } from "../theme";
+import { api } from "../api";
+import { colors, shadow } from "../theme";
 import { useResponsiveLayout } from "../utils/responsive";
 
-export default function ProfileDetailScreen({ route, navigation }) {
-  const { profileId } = route.params || {};
+export default function CompleteProfileScreen({ navigation }) {
+  const { isSmallPhone, isTablet } = useResponsiveLayout();
 
-  const [profile, setProfile] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [sent, setSent] = useState(false);
-  const [sending, setSending] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [photo, setPhoto] = useState(null);
 
-  const insets = useSafeAreaInsets();
+  const [form, setForm] = useState({
+    fullName: "",
+    dob: "",
+    gender: "Male",
+    location: "",
+    education: "",
+    occupation: "",
+    height: "",
+    weight: "",
+    interests: "",
+    fatherName: "",
+    fatherMobile: "",
+    motherName: "",
+  });
 
-  const { isTablet, isSmallPhone, maxContentWidth } = useResponsiveLayout();
+  /* =========================================================
+     SET FIELD
+  ========================================================= */
 
-  // ==========================================================
-  // LOAD PROFILE
-  // ==========================================================
+  function setField(key, value) {
+    setForm((previous) => ({
+      ...previous,
+      [key]: value,
+    }));
+  }
 
-  useEffect(() => {
-    if (!profileId) {
-      Alert.alert("Profile Error", "Profile ID is missing.", [
-        {
-          text: "Go Back",
-          onPress: () => navigation.goBack(),
-        },
-      ]);
+  /* =========================================================
+     PICK PHOTO
+  ========================================================= */
 
+  async function choosePhoto() {
+    try {
+      const permission =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (!permission.granted) {
+        Alert.alert(
+          "Permission required",
+          "Please allow photo access to select your profile photo.",
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.85,
+      });
+
+      if (!result.canceled && result.assets?.length > 0) {
+        setPhoto(result.assets[0]);
+      }
+    } catch (error) {
+      console.log("IMAGE PICKER ERROR:", error);
+
+      Alert.alert("Photo error", "Unable to select your profile photo.");
+    }
+  }
+
+  /* =========================================================
+     DOB VALIDATION
+  ========================================================= */
+
+  function isValidDob(value) {
+    const parts = value.split("-");
+
+    if (parts.length !== 3) {
+      return false;
+    }
+
+    const year = Number(parts[0]);
+    const month = Number(parts[1]);
+    const day = Number(parts[2]);
+
+    if (
+      !Number.isInteger(year) ||
+      !Number.isInteger(month) ||
+      !Number.isInteger(day)
+    ) {
+      return false;
+    }
+
+    if (year < 1900 || month < 1 || month > 12 || day < 1 || day > 31) {
+      return false;
+    }
+
+    const date = new Date(year, month - 1, day);
+
+    return (
+      date.getFullYear() === year &&
+      date.getMonth() === month - 1 &&
+      date.getDate() === day
+    );
+  }
+
+  /* =========================================================
+     CALCULATE AGE
+  ========================================================= */
+
+  function calculateAge(dob) {
+    if (!isValidDob(dob)) {
+      return null;
+    }
+
+    const [year, month, day] = dob.split("-").map(Number);
+
+    const birthDate = new Date(year, month - 1, day);
+    const today = new Date();
+
+    let age = today.getFullYear() - birthDate.getFullYear();
+
+    const monthDifference = today.getMonth() - birthDate.getMonth();
+
+    if (
+      monthDifference < 0 ||
+      (monthDifference === 0 && today.getDate() < birthDate.getDate())
+    ) {
+      age--;
+    }
+
+    return age;
+  }
+
+  /* =========================================================
+     VALIDATION
+  ========================================================= */
+
+  function validateForm() {
+    const fullName = form.fullName.trim();
+    const dob = form.dob.trim();
+    const location = form.location.trim();
+
+    if (!fullName) {
+      Alert.alert("Name required", "Please enter your full name.");
+      return false;
+    }
+
+    if (!form.gender) {
+      Alert.alert("Gender required", "Please select your gender.");
+      return false;
+    }
+
+    if (!dob) {
+      Alert.alert("Date of birth required", "Please enter your date of birth.");
+      return false;
+    }
+
+    if (!isValidDob(dob)) {
+      Alert.alert(
+        "Invalid date",
+        "Please enter your date of birth in YYYY-MM-DD format.",
+      );
+      return false;
+    }
+
+    const age = calculateAge(dob);
+
+    if (age === null || age < 18) {
+      Alert.alert("Invalid age", "You must be at least 18 years old.");
+      return false;
+    }
+
+    if (!location) {
+      Alert.alert("Location required", "Please enter your city or location.");
+      return false;
+    }
+
+    return true;
+  }
+
+  /* =========================================================
+     COMPLETE PROFILE
+  ========================================================= */
+
+  async function completeProfile() {
+    if (!validateForm()) {
       return;
     }
 
-    loadProfileDetails();
-  }, [profileId]);
-
-  async function loadProfileDetails() {
     try {
       setLoading(true);
 
-      console.log("LOADING PROFILE:", profileId);
+      const token = await AsyncStorage.getItem("token");
 
-      const response = await api.get(`/profiles/${profileId}`);
+      if (!token) {
+        Alert.alert("Session expired", "Please login again.", [
+          {
+            text: "OK",
+            onPress: () => navigation.replace("Login"),
+          },
+        ]);
 
-      console.log("PROFILE DETAIL RESPONSE:", response.data);
+        return;
+      }
 
-      setProfile(response.data);
-    } catch (error) {
-      console.log(
-        "PROFILE DETAIL ERROR:",
-        error?.response?.data || error?.message || error,
-      );
+      const interests = form.interests
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+
+      const body = new FormData();
+
+      /* =====================================================
+         USER SCHEMA FIELDS
+      ===================================================== */
+
+      body.append("fullName", form.fullName.trim());
+
+      body.append("dob", form.dob.trim());
+
+      body.append("gender", form.gender);
+
+      body.append("location", form.location.trim());
+
+      body.append("education", form.education.trim());
+
+      body.append("occupation", form.occupation.trim());
+
+      body.append("height", form.height.trim());
+
+      body.append("weight", form.weight.trim());
+
+      body.append("interests", JSON.stringify(interests));
+
+      body.append("fatherName", form.fatherName.trim());
+
+      body.append("fatherMobile", form.fatherMobile.trim());
+
+      body.append("motherName", form.motherName.trim());
+
+      /* =====================================================
+         PROFILE PHOTO
+      ===================================================== */
+
+      if (photo?.uri) {
+        const filename =
+          photo.fileName || photo.uri.split("/").pop() || "profile.jpg";
+
+        const type = photo.mimeType || "image/jpeg";
+
+        body.append("profilePhoto", {
+          uri: photo.uri,
+          name: filename,
+          type,
+        });
+      }
+
+      console.log("COMPLETE PROFILE REQUEST", {
+        fullName: form.fullName,
+        dob: form.dob,
+        gender: form.gender,
+        location: form.location,
+        education: form.education,
+        occupation: form.occupation,
+        height: form.height,
+        weight: form.weight,
+        interests,
+        fatherName: form.fatherName,
+        fatherMobile: form.fatherMobile,
+        motherName: form.motherName,
+        hasPhoto: Boolean(photo?.uri),
+      });
+
+      const response = await api.put("/profile/complete", body, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "multipart/form-data",
+        },
+      });
+
+      console.log("COMPLETE PROFILE RESPONSE:", response.data);
+
+      const updatedUser = response.data?.user;
+
+      if (updatedUser) {
+        await AsyncStorage.setItem("user", JSON.stringify(updatedUser));
+      }
 
       Alert.alert(
-        "Unable to Load",
-        error?.response?.data?.message ||
-          "Could not load this profile. Please try again.",
+        "Profile completed",
+        "Your profile has been successfully completed.",
         [
           {
-            text: "Go Back",
-            onPress: () => navigation.goBack(),
+            text: "Continue",
+            onPress: () => {
+              navigation.replace("Home");
+            },
           },
         ],
       );
+    } catch (error) {
+      console.log("COMPLETE PROFILE ERROR:", error);
+
+      console.log("COMPLETE PROFILE RESPONSE:", error.response?.data);
+
+      let message = "Unable to complete your profile.";
+
+      if (error.response?.data?.message) {
+        message = error.response.data.message;
+      } else if (error.message === "Network Error") {
+        message = "Cannot connect to the backend server.";
+      } else if (error.message) {
+        message = error.message;
+      }
+
+      Alert.alert("Profile update failed", message);
     } finally {
       setLoading(false);
     }
   }
 
-  // ==========================================================
-  // SEND INTEREST
-  // ==========================================================
+  /* =========================================================
+     INPUT
+  ========================================================= */
 
-  async function sendInterest() {
-    if (!profile?._id || sent || sending) {
-      return;
-    }
-
-    try {
-      setSending(true);
-
-      console.log("SENDING INTEREST TO:", profile._id);
-
-      await api.post(`/interests/${profile._id}`);
-
-      setSent(true);
-
-      Alert.alert(
-        "Interest Sent 🎉",
-        `Your interest has been sent to ${profile.fullName || "this profile"}.`,
-      );
-    } catch (error) {
-      console.log(
-        "SEND INTEREST ERROR:",
-        error?.response?.data || error?.message || error,
-      );
-
-      if (error?.response?.status === 409) {
-        setSent(true);
-
-        Alert.alert(
-          "Already Sent",
-          "You have already sent an interest to this profile.",
-        );
-      } else {
-        Alert.alert(
-          "Something went wrong",
-          error?.response?.data?.message ||
-            "Could not send interest. Please try again.",
-        );
-      }
-    } finally {
-      setSending(false);
-    }
-  }
-
-  // ==========================================================
-  // IMAGE
-  // ==========================================================
-
-  const profileImage = useMemo(() => {
-    if (!profile?.profilePhoto) {
-      return null;
-    }
-
-    try {
-      return imageUrl(profile.profilePhoto);
-    } catch (error) {
-      console.log("IMAGE URL ERROR:", error);
-      return null;
-    }
-  }, [profile?.profilePhoto]);
-
-  // ==========================================================
-  // RESPONSIVE
-  // ==========================================================
-
-  const heroHeight = isTablet ? 560 : isSmallPhone ? 370 : 450;
-
-  const horizontalPadding = isTablet ? 28 : isSmallPhone ? 14 : 16;
-
-  const bottomBarPadding = Math.max(insets.bottom, 12);
-
-  // ==========================================================
-  // LOADING
-  // ==========================================================
-
-  if (loading) {
+  function renderInput({
+    label,
+    field,
+    placeholder,
+    keyboardType = "default",
+    multiline = false,
+    autoCapitalize = "sentences",
+  }) {
     return (
-      <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
-        <ProfileSkeleton isSmallPhone={isSmallPhone} isTablet={isTablet} />
-      </SafeAreaView>
+      <View style={styles.inputGroup}>
+        <Text style={styles.label}>{label}</Text>
+
+        <TextInput
+          style={[styles.input, multiline && styles.multilineInput]}
+          placeholder={placeholder}
+          placeholderTextColor={colors.muted}
+          value={form[field]}
+          onChangeText={(value) => setField(field, value)}
+          keyboardType={keyboardType}
+          autoCapitalize={autoCapitalize}
+          editable={!loading}
+          multiline={multiline}
+          textAlignVertical={multiline ? "top" : "center"}
+        />
+      </View>
     );
   }
 
-  // ==========================================================
-  // NO PROFILE
-  // ==========================================================
+  /* =========================================================
+     GENDER
+  ========================================================= */
 
-  if (!profile) {
+  function renderGender() {
     return (
-      <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
-        <View style={styles.errorScreen}>
-          <View style={styles.errorIcon}>
-            <Ionicons name="person-outline" size={34} color={colors.primary} />
-          </View>
+      <View style={styles.inputGroup}>
+        <Text style={styles.label}>Gender</Text>
 
-          <Text style={styles.errorTitle}>Profile not found</Text>
+        <View style={styles.genderRow}>
+          {["Male", "Female"].map((gender) => {
+            const selected = form.gender === gender;
 
-          <Text style={styles.errorText}>
-            This profile may have been removed or is no longer available.
-          </Text>
-
-          <Pressable
-            onPress={() => navigation.goBack()}
-            style={styles.errorButton}
-          >
-            <Ionicons name="arrow-back" size={18} color="#FFFFFF" />
-
-            <Text style={styles.errorButtonText}>Go Back</Text>
-          </Pressable>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  // ==========================================================
-  // MAIN UI
-  // ==========================================================
-
-  return (
-    <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
-      <View style={styles.root}>
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={[
-            styles.scrollContent,
-            {
-              paddingBottom: 100 + bottomBarPadding,
-            },
-          ]}
-        >
-          <View
-            style={[
-              styles.container,
-              {
-                maxWidth: maxContentWidth,
-              },
-            ]}
-          >
-            {/* ==================================================
-                HERO IMAGE
-            ================================================== */}
-
-            <View
-              style={[
-                styles.heroWrapper,
-                {
-                  height: heroHeight,
-                  marginHorizontal: isTablet ? 24 : 0,
-                  borderRadius: isTablet ? 28 : 0,
-                },
-              ]}
-            >
-              {profileImage ? (
-                <Image
-                  source={{
-                    uri: profileImage,
-                  }}
-                  style={styles.heroImage}
-                  resizeMode="cover"
-                  onError={(error) => {
-                    console.log(
-                      "PROFILE IMAGE ERROR:",
-                      error?.nativeEvent?.error,
-                    );
-                  }}
-                />
-              ) : (
-                <View style={styles.imagePlaceholder}>
-                  <View style={styles.imagePlaceholderIcon}>
-                    <Ionicons name="person" size={70} color="#94A3B8" />
-                  </View>
-
-                  <Text style={styles.imagePlaceholderText}>
-                    No profile photo
-                  </Text>
-                </View>
-              )}
-
-              {/* IMAGE OVERLAY */}
-
-              <View style={styles.heroOverlay} />
-
-              {/* BACK */}
-
+            return (
               <Pressable
-                onPress={() => navigation.goBack()}
-                hitSlop={8}
-                style={({ pressed }) => [
-                  styles.backButton,
-                  pressed && styles.backButtonPressed,
+                key={gender}
+                onPress={() => setField("gender", gender)}
+                disabled={loading}
+                style={[
+                  styles.genderButton,
+                  selected && styles.genderButtonSelected,
                 ]}
               >
-                <Ionicons name="arrow-back" size={21} color="#FFFFFF" />
-              </Pressable>
-            </View>
+                <Ionicons
+                  name={gender === "Male" ? "male-outline" : "female-outline"}
+                  size={19}
+                  color={selected ? colors.primary : colors.muted}
+                />
 
-            {/* ==================================================
-                PROFILE HEADER
-            ================================================== */}
-
-            <View
-              style={[
-                styles.profileCard,
-                {
-                  marginHorizontal: horizontalPadding,
-                },
-              ]}
-            >
-              {/* NAME */}
-
-              <View style={styles.nameRow}>
                 <Text
-                  style={[styles.name, isSmallPhone && styles.nameSmall]}
-                  numberOfLines={2}
+                  style={[
+                    styles.genderText,
+                    selected && styles.genderTextSelected,
+                  ]}
                 >
-                  {profile.fullName || "Profile"}
-
-                  {profile.age ? `, ${profile.age}` : ""}
+                  {gender}
                 </Text>
-              </View>
-
-              {/* LOCATION */}
-
-              {profile.city ? (
-                <View style={styles.locationRow}>
-                  <View style={styles.locationIcon}>
-                    <Ionicons
-                      name="location-outline"
-                      size={15}
-                      color={colors.primary}
-                    />
-                  </View>
-
-                  <Text style={styles.locationText} numberOfLines={1}>
-                    {profile.city}
-                  </Text>
-                </View>
-              ) : null}
-
-              {/* QUICK INFO */}
-
-              <View style={styles.quickInfoRow}>
-                {profile.gender ? (
-                  <QuickInfo
-                    icon={
-                      profile.gender === "Male"
-                        ? "male-outline"
-                        : "female-outline"
-                    }
-                    text={profile.gender}
-                  />
-                ) : null}
-
-                {profile.education ? (
-                  <QuickInfo icon="school-outline" text={profile.education} />
-                ) : null}
-              </View>
-            </View>
-
-            {/* ==================================================
-                CONTENT
-            ================================================== */}
-
-            <View
-              style={[
-                styles.content,
-                {
-                  paddingHorizontal: horizontalPadding,
-                },
-              ]}
-            >
-              {/* ==================================================
-                  ABOUT
-              ================================================== */}
-
-              <ModernSection icon="person-outline" title="About">
-                <Text style={styles.aboutText}>
-                  {profile.bio ||
-                    "No bio added yet. Feel free to connect to know more."}
-                </Text>
-              </ModernSection>
-
-              {/* ==================================================
-                  PROFILE DETAILS
-              ================================================== */}
-
-              <ModernSection
-                icon="information-circle-outline"
-                title="Profile Details"
-              >
-                <View style={styles.detailsGrid}>
-                  <DetailItem
-                    icon="person-outline"
-                    label="Gender"
-                    value={profile.gender}
-                  />
-
-                  <DetailItem
-                    icon="calendar-outline"
-                    label="Age"
-                    value={profile.age ? `${profile.age} years` : ""}
-                  />
-
-                  <DetailItem
-                    icon="resize-outline"
-                    label="Height"
-                    value={profile.height}
-                  />
-
-                  <DetailItem
-                    icon="school-outline"
-                    label="Education"
-                    value={profile.education}
-                  />
-
-                  <DetailItem
-                    icon="briefcase-outline"
-                    label="Occupation"
-                    value={profile.occupation}
-                  />
-
-                  <DetailItem
-                    icon="location-outline"
-                    label="Location"
-                    value={profile.city}
-                  />
-
-                  <DetailItem
-                    icon="people-outline"
-                    label="Dasha Nam"
-                    value={profile.dashaNam}
-                  />
-                </View>
-              </ModernSection>
-
-              {/* ==================================================
-                  FAMILY
-              ================================================== */}
-
-              {(profile.fatherName ||
-                profile.motherName ||
-                profile.familyDetails) && (
-                <ModernSection icon="people-outline" title="Family Details">
-                  <View style={styles.familyList}>
-                    {profile.fatherName ? (
-                      <FamilyItem
-                        icon="man-outline"
-                        label="Father"
-                        value={profile.fatherName}
-                      />
-                    ) : null}
-
-                    {profile.motherName ? (
-                      <FamilyItem
-                        icon="woman-outline"
-                        label="Mother"
-                        value={profile.motherName}
-                      />
-                    ) : null}
-
-                    {profile.fatherMobile ? (
-                      <FamilyItem
-                        icon="call-outline"
-                        label="Father Mobile"
-                        value={profile.fatherMobile}
-                      />
-                    ) : null}
-                  </View>
-
-                  {profile.familyDetails ? (
-                    <View style={styles.familyDescription}>
-                      <Text style={styles.familyDescriptionLabel}>Family</Text>
-
-                      <Text style={styles.familyDescriptionText}>
-                        {profile.familyDetails}
-                      </Text>
-                    </View>
-                  ) : null}
-                </ModernSection>
-              )}
-
-              {/* ==================================================
-                  INTERESTS
-              ================================================== */}
-
-              {Array.isArray(profile.interests) &&
-                profile.interests.length > 0 && (
-                  <ModernSection
-                    icon="sparkles-outline"
-                    title="Interests & Hobbies"
-                  >
-                    <View style={styles.interestsWrapper}>
-                      {profile.interests.map((interest, index) => (
-                        <View
-                          key={`${interest}-${index}`}
-                          style={styles.interestTag}
-                        >
-                          <Ionicons
-                            name="sparkles-outline"
-                            size={13}
-                            color={colors.primary}
-                          />
-
-                          <Text style={styles.interestText}>{interest}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  </ModernSection>
-                )}
-
-              {/* ==================================================
-                  BIODATA
-              ================================================== */}
-
-              {profile.biodataUrl ? (
-                <ModernSection icon="document-text-outline" title="Biodata">
-                  <View style={styles.biodataCard}>
-                    <View style={styles.biodataIcon}>
-                      <Ionicons
-                        name="document-text-outline"
-                        size={22}
-                        color={colors.primary}
-                      />
-                    </View>
-
-                    <View style={styles.biodataContent}>
-                      <Text style={styles.biodataTitle}>Biodata available</Text>
-
-                      <Text style={styles.biodataText}>
-                        This profile has uploaded a biodata document.
-                      </Text>
-                    </View>
-                  </View>
-                </ModernSection>
-              ) : null}
-
-              {/* ==================================================
-                  CONNECT
-              ================================================== */}
-
-              <View style={styles.connectionCard}>
-                <View style={styles.connectionIcon}>
-                  <Ionicons
-                    name="heart-outline"
-                    size={22}
-                    color={colors.primary}
-                  />
-                </View>
-
-                <View style={styles.connectionContent}>
-                  <Text style={styles.connectionTitle}>
-                    Interested in this profile?
-                  </Text>
-
-                  <Text style={styles.connectionText}>
-                    Send an interest to start a meaningful connection.
-                  </Text>
-                </View>
-              </View>
-            </View>
-          </View>
-        </ScrollView>
-
-        {/* ======================================================
-            BOTTOM ACTION
-        ======================================================= */}
-
-        <View
-          style={[
-            styles.bottomBar,
-            {
-              paddingBottom: bottomBarPadding,
-            },
-          ]}
-        >
-          <View
-            style={[
-              styles.bottomBarInner,
-              {
-                maxWidth: maxContentWidth,
-                paddingHorizontal: horizontalPadding,
-              },
-            ]}
-          >
-            <Pressable
-              onPress={sendInterest}
-              disabled={sent || sending}
-              style={({ pressed }) => [
-                styles.actionButton,
-                sent && styles.actionButtonSent,
-                pressed && !sent && styles.actionButtonPressed,
-              ]}
-            >
-              {sending ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <>
-                  <Ionicons
-                    name={sent ? "checkmark-circle" : "heart-outline"}
-                    size={21}
-                    color="#FFFFFF"
-                  />
-
-                  <Text style={styles.actionButtonText}>
-                    {sent ? "Interest Sent" : "Send Interest"}
-                  </Text>
-
-                  {!sent && (
-                    <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
-                  )}
-                </>
-              )}
-            </Pressable>
-          </View>
+              </Pressable>
+            );
+          })}
         </View>
       </View>
-    </SafeAreaView>
-  );
-}
+    );
+  }
 
-// ============================================================
-// QUICK INFO
-// ============================================================
+  /* =========================================================
+     PHOTO
+  ========================================================= */
 
-function QuickInfo({ icon, text }) {
-  return (
-    <View style={styles.quickInfo}>
-      <Ionicons name={icon} size={15} color={colors.primary} />
+  function renderPhoto() {
+    return (
+      <View style={styles.photoSection}>
+        <Pressable
+          style={styles.photoButton}
+          onPress={choosePhoto}
+          disabled={loading}
+        >
+          {photo?.uri ? (
+            <Image
+              source={{
+                uri: photo.uri,
+              }}
+              style={styles.profileImage}
+            />
+          ) : (
+            <View style={styles.photoPlaceholder}>
+              <View style={styles.photoIconCircle}>
+                <Ionicons
+                  name="camera-outline"
+                  size={30}
+                  color={colors.primary}
+                />
+              </View>
 
-      <Text style={styles.quickInfoText} numberOfLines={1}>
-        {text}
-      </Text>
-    </View>
-  );
-}
+              <Text style={styles.photoTitle}>Add profile photo</Text>
 
-// ============================================================
-// MODERN SECTION
-// ============================================================
+              <Text style={styles.photoSubtitle}>
+                Choose a clear photo of yourself
+              </Text>
+            </View>
+          )}
 
-function ModernSection({ icon, title, children }) {
-  return (
-    <View style={styles.sectionCard}>
+          {photo?.uri && (
+            <View style={styles.cameraBadge}>
+              <Ionicons name="camera" size={17} color="#fff" />
+            </View>
+          )}
+        </Pressable>
+
+        {photo?.uri && (
+          <Text style={styles.photoChangeText}>Tap photo to change</Text>
+        )}
+      </View>
+    );
+  }
+
+  /* =========================================================
+     SECTION HEADER
+  ========================================================= */
+
+  function renderSectionHeader(icon, title, subtitle) {
+    return (
       <View style={styles.sectionHeader}>
         <View style={styles.sectionIcon}>
           <Ionicons name={icon} size={18} color={colors.primary} />
         </View>
 
-        <Text style={styles.sectionTitle}>{title}</Text>
+        <View style={styles.sectionHeaderText}>
+          <Text style={styles.sectionTitle}>{title}</Text>
+
+          <Text style={styles.sectionSubtitle}>{subtitle}</Text>
+        </View>
       </View>
-
-      {children}
-    </View>
-  );
-}
-
-// ============================================================
-// DETAIL ITEM
-// ============================================================
-
-function DetailItem({ icon, label, value }) {
-  if (!value) {
-    return null;
+    );
   }
 
-  return (
-    <View style={styles.detailItem}>
-      <View style={styles.detailIcon}>
-        <Ionicons name={icon} size={17} color={colors.primary} />
-      </View>
-
-      <View style={styles.detailContent}>
-        <Text style={styles.detailLabel}>{label}</Text>
-
-        <Text style={styles.detailValue} numberOfLines={2}>
-          {value}
-        </Text>
-      </View>
-    </View>
-  );
-}
-
-// ============================================================
-// FAMILY ITEM
-// ============================================================
-
-function FamilyItem({ icon, label, value }) {
-  return (
-    <View style={styles.familyItem}>
-      <View style={styles.familyIcon}>
-        <Ionicons name={icon} size={18} color={colors.primary} />
-      </View>
-
-      <View style={styles.familyContent}>
-        <Text style={styles.familyLabel}>{label}</Text>
-
-        <Text style={styles.familyValue}>{value}</Text>
-      </View>
-    </View>
-  );
-}
-
-// ============================================================
-// SKELETON
-// ============================================================
-
-function ProfileSkeleton({ isSmallPhone, isTablet }) {
-  const heroHeight = isTablet ? 560 : isSmallPhone ? 370 : 450;
+  /* =========================================================
+     RENDER
+  ========================================================= */
 
   return (
-    <ScrollView
-      style={styles.skeletonScreen}
-      showsVerticalScrollIndicator={false}
-    >
-      <View
-        style={[
-          styles.skeletonHero,
-          {
-            height: heroHeight,
-            marginHorizontal: isTablet ? 24 : 0,
-            borderRadius: isTablet ? 28 : 0,
-          },
-        ]}
+    <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
-        <View style={styles.skeletonBackButton} />
-      </View>
+        <ScrollView
+          style={styles.screen}
+          contentContainerStyle={[
+            styles.container,
+            isSmallPhone && styles.smallContainer,
+          ]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={[styles.card, isTablet && styles.tabletCard]}>
+            {/* HEADER */}
 
-      <View style={styles.skeletonProfileCard}>
-        <View style={styles.skeletonName} />
-        <View style={styles.skeletonLocation} />
-        <View style={styles.skeletonQuickInfo} />
-      </View>
+            <View style={styles.header}>
+              <View style={styles.headerIcon}>
+                <Ionicons
+                  name="person-outline"
+                  size={27}
+                  color={colors.primary}
+                />
+              </View>
 
-      <SkeletonSection />
-      <SkeletonSection />
-      <SkeletonSection />
-    </ScrollView>
+              <Text style={[styles.title, isSmallPhone && styles.smallTitle]}>
+                Complete your profile
+              </Text>
+
+              <Text style={styles.subtitle}>
+                Add a few details to help people discover your profile.
+              </Text>
+            </View>
+
+            {/* PHOTO */}
+
+            {renderPhoto()}
+
+            {/* BASIC INFORMATION */}
+
+            {renderSectionHeader(
+              "person-outline",
+              "Basic information",
+              "Your personal details",
+            )}
+
+            {renderInput({
+              label: "Full name",
+              field: "fullName",
+              placeholder: "Enter your full name",
+            })}
+
+            {renderGender()}
+
+            {renderInput({
+              label: "Date of birth",
+              field: "dob",
+              placeholder: "YYYY-MM-DD",
+              keyboardType:
+                Platform.OS === "ios" ? "numbers-and-punctuation" : "numeric",
+            })}
+
+            <View style={styles.dobHintRow}>
+              <Ionicons
+                name="information-circle-outline"
+                size={14}
+                color={colors.muted}
+              />
+
+              <Text style={styles.dobHint}>You must be 18 or older.</Text>
+
+              {form.dob && isValidDob(form.dob) && (
+                <Text style={styles.agePreview}>
+                  Age: {calculateAge(form.dob)}
+                </Text>
+              )}
+            </View>
+
+            {/* EDUCATION / CAREER */}
+
+            {renderSectionHeader(
+              "school-outline",
+              "Education & career",
+              "Your professional background",
+            )}
+
+            {renderInput({
+              label: "Education",
+              field: "education",
+              placeholder: "e.g. B.Tech, MBA, Graduate",
+            })}
+
+            {renderInput({
+              label: "Occupation",
+              field: "occupation",
+              placeholder: "e.g. Software Engineer",
+            })}
+
+            {/* LOCATION / APPEARANCE */}
+
+            {renderSectionHeader(
+              "location-outline",
+              "Location & appearance",
+              "Basic profile information",
+            )}
+
+            {renderInput({
+              label: "Location",
+              field: "location",
+              placeholder: "Enter your city or location",
+            })}
+
+            {renderInput({
+              label: "Height",
+              field: "height",
+              placeholder: `e.g. 5'8" or 173 cm`,
+            })}
+
+            {renderInput({
+              label: "Weight",
+              field: "weight",
+              placeholder: "e.g. 65 kg",
+              keyboardType: "decimal-pad",
+            })}
+
+            {/* INTERESTS */}
+
+            {renderSectionHeader(
+              "heart-outline",
+              "Interests",
+              "Tell people what you enjoy",
+            )}
+
+            {renderInput({
+              label: "Interests",
+              field: "interests",
+              placeholder: "e.g. Travel, Music, Reading",
+            })}
+
+            <Text style={styles.fieldHint}>
+              Separate multiple interests with commas.
+            </Text>
+
+            {/* FAMILY */}
+
+            {renderSectionHeader(
+              "people-outline",
+              "Family information",
+              "Basic family details",
+            )}
+
+            {renderInput({
+              label: "Father's name",
+              field: "fatherName",
+              placeholder: "Enter father's name",
+            })}
+
+            {renderInput({
+              label: "Father's mobile",
+              field: "fatherMobile",
+              placeholder: "Enter father's mobile number",
+              keyboardType: "phone-pad",
+              autoCapitalize: "none",
+            })}
+
+            {renderInput({
+              label: "Mother's name",
+              field: "motherName",
+              placeholder: "Enter mother's name",
+            })}
+
+            {/* COMPLETE BUTTON */}
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.button,
+                loading && styles.buttonDisabled,
+                pressed && !loading && styles.buttonPressed,
+              ]}
+              onPress={completeProfile}
+              disabled={loading}
+            >
+              {loading ? (
+                <View style={styles.buttonContent}>
+                  <ActivityIndicator size="small" color="#fff" />
+
+                  <Text style={styles.buttonText}>Saving profile...</Text>
+                </View>
+              ) : (
+                <View style={styles.buttonContent}>
+                  <Text style={styles.buttonText}>Complete Profile</Text>
+
+                  <Ionicons name="arrow-forward" size={21} color="#fff" />
+                </View>
+              )}
+            </Pressable>
+
+            <Text style={styles.bottomText}>
+              You can update your profile details later from your profile
+              settings.
+            </Text>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
-function SkeletonSection() {
-  return (
-    <View style={styles.skeletonSection}>
-      <View style={styles.skeletonSectionTitle} />
-
-      <View style={styles.skeletonLine} />
-      <View style={styles.skeletonLine} />
-      <View style={styles.skeletonLineShort} />
-    </View>
-  );
-}
-
-// ============================================================
-// STYLES
-// ============================================================
+/* =========================================================
+   STYLES
+========================================================= */
 
 const styles = StyleSheet.create({
-  // ==========================================================
-  // SCREEN
-  // ==========================================================
-
   screen: {
     flex: 1,
     backgroundColor: colors.bg,
   },
 
-  root: {
+  flex: {
     flex: 1,
-  },
-
-  scrollContent: {
-    paddingBottom: 20,
   },
 
   container: {
+    flexGrow: 1,
+    padding: 20,
+    paddingBottom: 50,
+  },
+
+  smallContainer: {
+    paddingHorizontal: 16,
+  },
+
+  card: {
     width: "100%",
+    maxWidth: 650,
     alignSelf: "center",
   },
 
-  // ==========================================================
-  // HERO
-  // ==========================================================
-
-  heroWrapper: {
-    width: "100%",
-    overflow: "hidden",
-    backgroundColor: "#E2E8F0",
-    position: "relative",
+  tabletCard: {
+    backgroundColor: "#fff",
+    padding: 34,
+    borderRadius: 28,
+    ...shadow,
   },
 
-  heroImage: {
-    width: "100%",
-    height: "100%",
-    backgroundColor: "#E2E8F0",
+  /* =======================================================
+     HEADER
+  ======================================================= */
+
+  header: {
+    alignItems: "center",
+    marginBottom: 28,
   },
 
-  heroOverlay: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: 130,
-    backgroundColor: "rgba(0,0,0,0.16)",
-  },
-
-  imagePlaceholder: {
-    flex: 1,
+  headerIcon: {
+    width: 62,
+    height: 62,
+    borderRadius: 31,
+    backgroundColor: "#EFF6FF",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#E2E8F0",
+    marginBottom: 16,
   },
 
-  imagePlaceholderIcon: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#CBD5E1",
-  },
-
-  imagePlaceholderText: {
-    marginTop: 12,
-    color: "#64748B",
-    fontSize: 13,
-    fontWeight: "700",
-  },
-
-  // ==========================================================
-  // BACK
-  // ==========================================================
-
-  backButton: {
-    position: "absolute",
-    top: 16,
-    left: 16,
-
-    width: 44,
-    height: 44,
-
-    borderRadius: 15,
-
-    alignItems: "center",
-    justifyContent: "center",
-
-    backgroundColor: "rgba(15,23,42,0.65)",
-
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.25)",
-  },
-
-  backButtonPressed: {
-    opacity: 0.7,
-
-    transform: [
-      {
-        scale: 0.94,
-      },
-    ],
-  },
-
-  // ==========================================================
-  // PROFILE HEADER
-  // ==========================================================
-
-  profileCard: {
-    marginTop: -20,
-
-    backgroundColor: "#FFFFFF",
-
-    borderRadius: 25,
-
-    padding: 20,
-
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-
-    zIndex: 5,
-
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 5,
-    },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-
-    elevation: 3,
-  },
-
-  nameRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  name: {
-    flex: 1,
-
-    color: colors.text,
-
-    fontSize: 28,
-    lineHeight: 34,
-
+  title: {
+    fontSize: 29,
     fontWeight: "900",
-
+    color: colors.text,
+    textAlign: "center",
     letterSpacing: -0.6,
   },
 
-  nameSmall: {
-    fontSize: 24,
-    lineHeight: 30,
+  smallTitle: {
+    fontSize: 25,
   },
 
-  locationRow: {
-    flexDirection: "row",
-    alignItems: "center",
-
+  subtitle: {
+    color: colors.muted,
+    fontSize: 14,
+    lineHeight: 21,
+    textAlign: "center",
+    maxWidth: 430,
     marginTop: 8,
   },
 
-  locationIcon: {
-    width: 27,
-    height: 27,
+  /* =======================================================
+     PHOTO
+  ======================================================= */
 
-    borderRadius: 9,
-
+  photoSection: {
     alignItems: "center",
-    justifyContent: "center",
-
-    backgroundColor: colors.primaryLight,
-
-    marginRight: 7,
+    marginBottom: 30,
   },
 
-  locationText: {
-    color: colors.muted,
-
-    fontSize: 13,
-    fontWeight: "600",
-
-    flexShrink: 1,
-  },
-
-  quickInfoRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-
-    gap: 7,
-
-    marginTop: 14,
-  },
-
-  quickInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-
-    borderRadius: 11,
-
+  photoButton: {
+    width: 150,
+    height: 150,
+    borderRadius: 75,
     backgroundColor: "#F8FAFC",
-
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-  },
-
-  quickInfoText: {
-    marginLeft: 5,
-
-    color: colors.text,
-
-    fontSize: 11.5,
-    fontWeight: "700",
-  },
-
-  // ==========================================================
-  // CONTENT
-  // ==========================================================
-
-  content: {
-    marginTop: 14,
-  },
-
-  // ==========================================================
-  // SECTION
-  // ==========================================================
-
-  sectionCard: {
-    backgroundColor: "#FFFFFF",
-
-    borderRadius: 21,
-
-    padding: 18,
-
-    marginBottom: 13,
-
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-  },
-
-  sectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-
-    marginBottom: 14,
-  },
-
-  sectionIcon: {
-    width: 35,
-    height: 35,
-
-    borderRadius: 11,
-
+    borderWidth: 2,
+    borderColor: colors.border,
+    borderStyle: "dashed",
     alignItems: "center",
     justifyContent: "center",
-
-    backgroundColor: colors.primaryLight,
-
-    borderWidth: 1,
-    borderColor: "#DBEAFE",
-
-    marginRight: 9,
+    overflow: "visible",
+    position: "relative",
   },
 
-  sectionTitle: {
-    color: colors.text,
+  profileImage: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 75,
+  },
 
-    fontSize: 16,
+  photoPlaceholder: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+  },
+
+  photoIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "#EFF6FF",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 7,
+  },
+
+  photoTitle: {
+    color: colors.text,
+    fontSize: 13,
     fontWeight: "800",
+    textAlign: "center",
   },
 
-  // ==========================================================
-  // ABOUT
-  // ==========================================================
-
-  aboutText: {
-    color: colors.text,
-
-    fontSize: 14.5,
-    lineHeight: 23,
-
-    fontWeight: "400",
+  photoSubtitle: {
+    color: colors.muted,
+    fontSize: 10,
+    textAlign: "center",
+    marginTop: 3,
   },
 
-  // ==========================================================
-  // DETAILS
-  // ==========================================================
-
-  detailsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-
-    marginHorizontal: -5,
-  },
-
-  detailItem: {
-    width: "50%",
-
-    paddingHorizontal: 5,
-    paddingVertical: 8,
-
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  detailIcon: {
+  cameraBadge: {
+    position: "absolute",
+    right: -3,
+    bottom: 5,
     width: 38,
     height: 38,
-
-    borderRadius: 12,
-
+    borderRadius: 19,
+    backgroundColor: colors.primary,
     alignItems: "center",
     justifyContent: "center",
-
-    backgroundColor: "#F8FAFC",
-
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-
-    marginRight: 9,
+    borderWidth: 3,
+    borderColor: "#fff",
   },
 
-  detailContent: {
-    flex: 1,
-    minWidth: 0,
-  },
-
-  detailLabel: {
-    color: colors.muted,
-
-    fontSize: 10.5,
-    fontWeight: "600",
-  },
-
-  detailValue: {
-    color: colors.text,
-
-    fontSize: 13,
-    fontWeight: "700",
-
-    marginTop: 2,
-
-    lineHeight: 18,
-  },
-
-  // ==========================================================
-  // FAMILY
-  // ==========================================================
-
-  familyList: {
-    gap: 10,
-  },
-
-  familyItem: {
-    flexDirection: "row",
-    alignItems: "center",
-
-    padding: 11,
-
-    borderRadius: 14,
-
-    backgroundColor: "#F8FAFC",
-
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-  },
-
-  familyIcon: {
-    width: 38,
-    height: 38,
-
-    borderRadius: 12,
-
-    alignItems: "center",
-    justifyContent: "center",
-
-    backgroundColor: colors.primaryLight,
-
-    marginRight: 10,
-  },
-
-  familyContent: {
-    flex: 1,
-  },
-
-  familyLabel: {
-    color: colors.muted,
-
-    fontSize: 10.5,
-    fontWeight: "600",
-  },
-
-  familyValue: {
-    color: colors.text,
-
-    fontSize: 13,
-    fontWeight: "700",
-
-    marginTop: 2,
-  },
-
-  familyDescription: {
-    marginTop: 12,
-
-    paddingTop: 12,
-
-    borderTopWidth: 1,
-    borderTopColor: "#F1F5F9",
-  },
-
-  familyDescriptionLabel: {
-    color: colors.muted,
-
-    fontSize: 10.5,
-    fontWeight: "600",
-  },
-
-  familyDescriptionText: {
-    color: colors.text,
-
-    fontSize: 13.5,
-    lineHeight: 21,
-
-    marginTop: 4,
-  },
-
-  // ==========================================================
-  // INTERESTS
-  // ==========================================================
-
-  interestsWrapper: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-
-    gap: 8,
-  },
-
-  interestTag: {
-    flexDirection: "row",
-    alignItems: "center",
-
-    paddingHorizontal: 11,
-    paddingVertical: 8,
-
-    borderRadius: 13,
-
-    backgroundColor: "#F8FAFC",
-
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-
-    gap: 6,
-  },
-
-  interestText: {
+  photoChangeText: {
+    marginTop: 8,
     color: colors.primary,
-
     fontSize: 12,
     fontWeight: "700",
   },
 
-  // ==========================================================
-  // BIODATA
-  // ==========================================================
+  /* =======================================================
+     SECTIONS
+  ======================================================= */
 
-  biodataCard: {
+  sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
-
-    padding: 12,
-
-    borderRadius: 15,
-
-    backgroundColor: "#F8FAFC",
-
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
+    marginTop: 10,
+    marginBottom: 18,
+    paddingTop: 8,
   },
 
-  biodataIcon: {
-    width: 45,
-    height: 45,
-
-    borderRadius: 14,
-
+  sectionIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: "#EFF6FF",
     alignItems: "center",
     justifyContent: "center",
-
-    backgroundColor: colors.primaryLight,
-
     marginRight: 11,
   },
 
-  biodataContent: {
+  sectionHeaderText: {
     flex: 1,
   },
 
-  biodataTitle: {
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: "900",
     color: colors.text,
-
-    fontSize: 13.5,
-    fontWeight: "800",
   },
 
-  biodataText: {
+  sectionSubtitle: {
+    fontSize: 11,
     color: colors.muted,
-
-    fontSize: 11.5,
-    lineHeight: 17,
-
-    marginTop: 3,
+    marginTop: 2,
   },
 
-  // ==========================================================
-  // CONNECTION
-  // ==========================================================
+  /* =======================================================
+     INPUT
+  ======================================================= */
 
-  connectionCard: {
+  inputGroup: {
+    marginBottom: 17,
+  },
+
+  label: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: colors.text,
+    marginBottom: 8,
+  },
+
+  input: {
+    height: 53,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    paddingHorizontal: 15,
+    fontSize: 15,
+    color: colors.text,
+  },
+
+  multilineInput: {
+    height: 105,
+    paddingTop: 14,
+    paddingBottom: 14,
+  },
+
+  fieldHint: {
+    color: colors.muted,
+    fontSize: 11,
+    marginTop: -8,
+    marginBottom: 15,
+  },
+
+  dobHintRow: {
     flexDirection: "row",
     alignItems: "center",
-
-    backgroundColor: colors.primaryLight,
-
-    borderRadius: 19,
-
-    padding: 15,
-
-    marginBottom: 10,
-
-    borderWidth: 1,
-    borderColor: "#DBEAFE",
+    marginTop: -9,
+    marginBottom: 17,
   },
 
-  connectionIcon: {
-    width: 46,
-    height: 46,
+  dobHint: {
+    color: colors.muted,
+    fontSize: 11,
+    marginLeft: 5,
+  },
 
+  agePreview: {
+    color: colors.primary,
+    fontSize: 11,
+    fontWeight: "800",
+    marginLeft: "auto",
+  },
+
+  /* =======================================================
+     GENDER
+  ======================================================= */
+
+  genderRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+
+  genderButton: {
+    flex: 1,
+    minHeight: 53,
     borderRadius: 14,
-
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: "#fff",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-
-    backgroundColor: "#FFFFFF",
-
-    borderWidth: 1,
-    borderColor: "#DBEAFE",
-
-    marginRight: 11,
+    gap: 8,
   },
 
-  connectionContent: {
-    flex: 1,
-    minWidth: 0,
-  },
-
-  connectionTitle: {
-    color: colors.text,
-
-    fontSize: 13.5,
-    fontWeight: "800",
-  },
-
-  connectionText: {
-    color: colors.muted,
-
-    fontSize: 11.5,
-    lineHeight: 17,
-
-    marginTop: 3,
-  },
-
-  // ==========================================================
-  // BOTTOM BAR
-  // ==========================================================
-
-  bottomBar: {
-    position: "absolute",
-
-    left: 0,
-    right: 0,
-    bottom: 0,
-
-    paddingTop: 9,
-
-    backgroundColor: "#FFFFFF",
-
-    borderTopWidth: 1,
-    borderTopColor: "#E2E8F0",
-  },
-
-  bottomBarInner: {
-    width: "100%",
-    alignSelf: "center",
-  },
-
-  actionButton: {
-    height: 54,
-
-    borderRadius: 17,
-
-    backgroundColor: colors.primary,
-
-    borderWidth: 1,
+  genderButtonSelected: {
     borderColor: colors.primary,
+    backgroundColor: "#EFF6FF",
+  },
 
-    flexDirection: "row",
+  genderText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: colors.muted,
+  },
+
+  genderTextSelected: {
+    color: colors.primary,
+    fontWeight: "900",
+  },
+
+  /* =======================================================
+     BUTTON
+  ======================================================= */
+
+  button: {
+    height: 57,
+    backgroundColor: colors.primary,
+    borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
-
-    paddingHorizontal: 18,
-
-    gap: 9,
+    marginTop: 15,
   },
 
-  actionButtonSent: {
-    backgroundColor: colors.success,
-    borderColor: colors.success,
-  },
-
-  actionButtonPressed: {
-    opacity: 0.8,
-
+  buttonPressed: {
+    opacity: 0.85,
     transform: [
       {
-        scale: 0.985,
+        scale: 0.99,
       },
     ],
   },
 
-  actionButtonText: {
-    color: "#FFFFFF",
-
-    fontSize: 15,
-    fontWeight: "800",
-
-    flex: 1,
-
-    textAlign: "center",
+  buttonDisabled: {
+    opacity: 0.6,
   },
 
-  // ==========================================================
-  // ERROR
-  // ==========================================================
-
-  errorScreen: {
-    flex: 1,
-
-    alignItems: "center",
-    justifyContent: "center",
-
-    paddingHorizontal: 30,
-  },
-
-  errorIcon: {
-    width: 76,
-    height: 76,
-
-    borderRadius: 25,
-
-    alignItems: "center",
-    justifyContent: "center",
-
-    backgroundColor: colors.primaryLight,
-  },
-
-  errorTitle: {
-    marginTop: 17,
-
-    color: colors.text,
-
-    fontSize: 19,
-    fontWeight: "900",
-  },
-
-  errorText: {
-    marginTop: 7,
-
-    color: colors.muted,
-
-    fontSize: 13.5,
-    lineHeight: 20,
-
-    textAlign: "center",
-  },
-
-  errorButton: {
+  buttonContent: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 10,
+  },
 
-    gap: 7,
+  buttonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "900",
+  },
 
-    marginTop: 20,
+  /* =======================================================
+     FOOTER
+  ======================================================= */
 
+  bottomText: {
+    color: colors.muted,
+    fontSize: 11,
+    lineHeight: 17,
+    textAlign: "center",
+    marginTop: 17,
     paddingHorizontal: 20,
-    paddingVertical: 12,
-
-    borderRadius: 14,
-
-    backgroundColor: colors.primary,
-  },
-
-  errorButtonText: {
-    color: "#FFFFFF",
-
-    fontSize: 13.5,
-    fontWeight: "800",
-  },
-
-  // ==========================================================
-  // SKELETON
-  // ==========================================================
-
-  skeletonScreen: {
-    flex: 1,
-    backgroundColor: colors.bg,
-  },
-
-  skeletonHero: {
-    width: "100%",
-
-    backgroundColor: "#E2E8F0",
-
-    overflow: "hidden",
-
-    position: "relative",
-  },
-
-  skeletonBackButton: {
-    position: "absolute",
-
-    top: 16,
-    left: 16,
-
-    width: 44,
-    height: 44,
-
-    borderRadius: 14,
-
-    backgroundColor: "#CBD5E1",
-  },
-
-  skeletonProfileCard: {
-    marginHorizontal: 16,
-
-    marginTop: -18,
-
-    padding: 20,
-
-    borderRadius: 24,
-
-    backgroundColor: "#FFFFFF",
-
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-  },
-
-  skeletonName: {
-    width: "62%",
-    height: 28,
-
-    borderRadius: 8,
-
-    backgroundColor: "#E2E8F0",
-  },
-
-  skeletonLocation: {
-    width: "38%",
-    height: 13,
-
-    borderRadius: 7,
-
-    backgroundColor: "#E2E8F0",
-
-    marginTop: 9,
-  },
-
-  skeletonQuickInfo: {
-    width: "55%",
-    height: 32,
-
-    borderRadius: 10,
-
-    backgroundColor: "#E2E8F0",
-
-    marginTop: 14,
-  },
-
-  skeletonSection: {
-    marginHorizontal: 16,
-
-    marginTop: 14,
-
-    padding: 18,
-
-    borderRadius: 21,
-
-    backgroundColor: "#FFFFFF",
-
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-  },
-
-  skeletonSectionTitle: {
-    width: 140,
-    height: 20,
-
-    borderRadius: 7,
-
-    backgroundColor: "#E2E8F0",
-
-    marginBottom: 15,
-  },
-
-  skeletonLine: {
-    width: "90%",
-    height: 13,
-
-    borderRadius: 7,
-
-    backgroundColor: "#E2E8F0",
-
-    marginTop: 9,
-  },
-
-  skeletonLineShort: {
-    width: "55%",
-    height: 13,
-
-    borderRadius: 7,
-
-    backgroundColor: "#E2E8F0",
-
-    marginTop: 9,
   },
 });

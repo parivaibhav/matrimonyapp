@@ -1,21 +1,7 @@
 import mongoose from "mongoose";
 
-/* =========================================================
-   CONSTANTS
-========================================================= */
-
-const OTP_PURPOSES = ["signup", "login"];
-
-/* =========================================================
-   USER SCHEMA
-========================================================= */
-
 const userSchema = new mongoose.Schema(
   {
-    // =======================================================
-    // ACCOUNT
-    // =======================================================
-
     email: {
       type: String,
       required: true,
@@ -25,45 +11,12 @@ const userSchema = new mongoose.Schema(
       index: true,
     },
 
-    emailVerified: {
-      type: Boolean,
-      default: false,
-      index: true,
-    },
-
-    // =======================================================
-    // OTP
-    // =======================================================
-
-    emailOtpHash: {
+    password: {
       type: String,
-      default: null,
+      required: true,
+      minlength: 6,
+      select: false,
     },
-
-    emailOtpExpiresAt: {
-      type: Date,
-      default: null,
-    },
-
-    emailOtpAttempts: {
-      type: Number,
-      default: 0,
-    },
-
-    emailOtpLastSentAt: {
-      type: Date,
-      default: null,
-    },
-
-    emailOtpPurpose: {
-      type: String,
-      enum: OTP_PURPOSES,
-      default: null,
-    },
-
-    // =======================================================
-    // PROFILE
-    // =======================================================
 
     profilePhoto: {
       type: String,
@@ -77,19 +30,19 @@ const userSchema = new mongoose.Schema(
       trim: true,
     },
 
-    gender: {
-      type: String,
-      enum: ["Male", "Female"],
-      trim: true,
-    },
-
-    age: {
-      type: Number,
-      min: 18,
+    dob: {
+      type: Date,
       default: null,
     },
 
-    phone: {
+    gender: {
+      type: String,
+      enum: ["Male", "Female"],
+      default: null,
+      trim: true,
+    },
+
+    location: {
       type: String,
       default: "",
       trim: true,
@@ -107,29 +60,24 @@ const userSchema = new mongoose.Schema(
       trim: true,
     },
 
-    city: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
     height: {
       type: String,
       default: "",
       trim: true,
     },
 
-    // =======================================================
-    // FAMILY
-    // =======================================================
-
-    fatherName: {
+    weight: {
       type: String,
       default: "",
       trim: true,
     },
 
-    motherName: {
+    interests: {
+      type: [String],
+      default: [],
+    },
+
+    fatherName: {
       type: String,
       default: "",
       trim: true,
@@ -141,36 +89,11 @@ const userSchema = new mongoose.Schema(
       trim: true,
     },
 
-    familyDetails: {
+    motherName: {
       type: String,
       default: "",
       trim: true,
     },
-
-    // =======================================================
-    // OTHER PROFILE
-    // =======================================================
-
-    bio: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    biodataUrl: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
-    interests: {
-      type: [String],
-      default: [],
-    },
-
-    // =======================================================
-    // PROFILE STATUS
-    // =======================================================
 
     profileCompleted: {
       type: Boolean,
@@ -182,10 +105,6 @@ const userSchema = new mongoose.Schema(
     timestamps: true,
   },
 );
-
-/* =========================================================
-   MODEL
-========================================================= */
 
 const User = mongoose.model("User", userSchema);
 

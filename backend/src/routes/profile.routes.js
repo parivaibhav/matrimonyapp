@@ -1,60 +1,11 @@
 import { Router } from "express";
 import multer from "multer";
-import path from "path";
-import fs from "fs";
-import { fileURLToPath } from "url";
 
 import User from "../models/User.js";
 import { auth } from "../middleware/auth.js";
+import cloudinary from "../config/cloudinary.js";
 
 const router = Router();
-
-/* =========================================================
-   PATHS
-========================================================= */
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const uploadsDir = path.join(__dirname, "../../uploads");
-
-fs.mkdirSync(uploadsDir, {
-  recursive: true,
-});
-
-/* =========================================================
-   MULTER
-========================================================= */
-
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, uploadsDir);
-  },
-
-  filename: function (req, file, cb) {
-    const ext = path.extname(file.originalname) || ".jpg";
-
-    const uniqueSuffix =
-      Date.now() + "-" + Math.round(Math.random() * 1e9);
-
-    cb(
-      null,
-      file.fieldname + "-" + uniqueSuffix + ext,
-    );
-  },
-});
-
-const upload = multer({
-  storage,
-
-  limits: {
-    fileSize: 10 * 1024 * 1024,
-  },
-});
-
-/* =========================================================
-   EDUCATION OPTIONS
-========================================================= */
 
 const EDUCATION_OPTIONS = [
   "10th",
@@ -86,10 +37,66 @@ const EDUCATION_OPTIONS = [
   "Other",
 ];
 
-/* =========================================================
-   GET EDUCATION OPTIONS
-   GET /profiles/options/education
-========================================================= */
+const storage = multer.memoryStorage();
+
+const upload = multer({
+  storage,
+
+  limits: {
+    fileSize: 10 * 1024 * 1024,
+  },
+
+  fileFilter: (req, file, cb) => {
+    if (!file.mimetype.startsWith("image/")) {
+      return cb(new Error("Only image files are allowed."));
+    }
+
+    cb(null, true);
+  },
+});
+
+function uploadToCloudinary(buffer, folder) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder,
+        resource_type: "image",
+        transformation: [
+          {
+            width: 1200,
+            height: 1200,
+            crop: "limit",
+          },
+          {
+            quality: "auto",
+            fetch_format: "auto",
+          },
+        ],
+      },
+      (error, result) => {
+        if (error) {
+          return reject(error);
+        }
+
+        resolve(result);
+      },
+    );
+
+    stream.end(buffer);
+  });
+}
+
+async function deleteFromCloudinary(publicId) {
+  if (!publicId) {
+    return;
+  }
+
+  try {
+    await cloudinary.uploader.destroy(publicId);
+  } catch (error) {
+    console.error("CLOUDINARY DELETE ERROR:", error);
+  }
+}
 
 router.get("/options/education", auth, async (req, res) => {
   try {
@@ -105,68 +112,21 @@ router.get("/options/education", auth, async (req, res) => {
   }
 });
 
-/* =========================================================
-   GET ALL PROFILES
-   GET /profiles
-========================================================= */
-
 router.get("/", auth, async (req, res) => {
   try {
-    const {
-      gender,
-      search,
-      city,
-    } = req.query;
-
-    console.log("======================================");
-    console.log("GET /profiles");
-    console.log("Logged in user:", req.userId);
-    console.log("Query:", req.query);
-    console.log("======================================");
-
-    /* -------------------------------------------------------
-       BASE FILTER
-    ------------------------------------------------------- */
+    const { gender, search, location, education, occupation } = req.query;
 
     const filter = {
       _id: {
         $ne: req.userId,
       },
+
+      profileCompleted: true,
     };
-
-    /* -------------------------------------------------------
-       PROFILE COMPLETION FILTER
-
-       Visible when:
-       - profileCompleted === true
-       OR
-       - profileCompleted does not exist
-
-       This supports old users.
-    ------------------------------------------------------- */
-
-    filter.$or = [
-      {
-        profileCompleted: true,
-      },
-      {
-        profileCompleted: {
-          $exists: false,
-        },
-      },
-    ];
-
-    /* -------------------------------------------------------
-       GENDER
-    ------------------------------------------------------- */
 
     if (gender && ["Male", "Female"].includes(gender)) {
       filter.gender = gender;
     }
-
-    /* -------------------------------------------------------
-       NAME SEARCH
-    ------------------------------------------------------- */
 
     if (search?.trim()) {
       filter.fullName = {
@@ -175,78 +135,31 @@ router.get("/", auth, async (req, res) => {
       };
     }
 
-    /* -------------------------------------------------------
-       CITY
-    ------------------------------------------------------- */
-
-    if (city?.trim()) {
-      filter.city = {
-        $regex: city.trim(),
+    if (location?.trim()) {
+      filter.location = {
+        $regex: location.trim(),
         $options: "i",
       };
     }
 
-    /* -------------------------------------------------------
-       DEBUG DATABASE COUNT
-    ------------------------------------------------------- */
+    if (education?.trim() && EDUCATION_OPTIONS.includes(education.trim())) {
+      filter.education = education.trim();
+    }
 
-    const totalUsers = await User.countDocuments();
-
-    console.log(
-      "TOTAL USERS IN DATABASE:",
-      totalUsers,
-    );
-
-    const usersWithoutCurrentUser =
-      await User.countDocuments({
-        _id: {
-          $ne: req.userId,
-        },
-      });
-
-    console.log(
-      "USERS EXCLUDING CURRENT USER:",
-      usersWithoutCurrentUser,
-    );
-
-    const completedUsers =
-      await User.countDocuments({
-        _id: {
-          $ne: req.userId,
-        },
-        profileCompleted: true,
-      });
-
-    console.log(
-      "COMPLETED USERS:",
-      completedUsers,
-    );
-
-    /* -------------------------------------------------------
-       GET USERS
-    ------------------------------------------------------- */
+    if (occupation?.trim()) {
+      filter.occupation = {
+        $regex: occupation.trim(),
+        $options: "i",
+      };
+    }
 
     const users = await User.find(filter)
-      .select("-passwordHash")
+      .select("-password")
       .sort({
         createdAt: -1,
       })
       .limit(50)
       .lean();
-
-    console.log(
-      "VISIBLE PROFILES:",
-      users.length,
-    );
-
-    console.log(
-      "VISIBLE PROFILE IDS:",
-      users.map((user) => user._id),
-    );
-
-    /* -------------------------------------------------------
-       RESPONSE
-    ------------------------------------------------------- */
 
     return res.json(users);
   } catch (error) {
@@ -255,23 +168,14 @@ router.get("/", auth, async (req, res) => {
     return res.status(500).json({
       message: "Could not load profiles",
 
-      error:
-        process.env.NODE_ENV === "development"
-          ? error.message
-          : undefined,
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 });
 
-/* =========================================================
-   GET CURRENT USER
-   GET /profiles/me/current
-========================================================= */
-
 router.get("/me/current", auth, async (req, res) => {
   try {
-    const user = await User.findById(req.userId)
-      .select("-passwordHash");
+    const user = await User.findById(req.userId).select("-password").lean();
 
     if (!user) {
       return res.status(404).json({
@@ -281,10 +185,7 @@ router.get("/me/current", auth, async (req, res) => {
 
     return res.json(user);
   } catch (error) {
-    console.error(
-      "LOAD CURRENT USER ERROR:",
-      error,
-    );
+    console.error("LOAD CURRENT USER ERROR:", error);
 
     return res.status(500).json({
       message: "Could not load user profile",
@@ -292,33 +193,22 @@ router.get("/me/current", auth, async (req, res) => {
   }
 });
 
-/* =========================================================
-   UPDATE CURRENT PROFILE
-   PUT /profiles/me
-========================================================= */
-
 router.put("/me", auth, async (req, res) => {
   try {
     const {
       fullName,
-      age,
+      dob,
       gender,
-      phone,
+      location,
       education,
       occupation,
-      city,
       height,
+      weight,
       fatherName,
-      motherName,
       fatherMobile,
-      bio,
-      familyDetails,
+      motherName,
       interests,
     } = req.body;
-
-    /* -------------------------------------------------------
-       FULL NAME
-    ------------------------------------------------------- */
 
     if (!fullName?.trim()) {
       return res.status(400).json({
@@ -326,164 +216,97 @@ router.put("/me", auth, async (req, res) => {
       });
     }
 
-    /* -------------------------------------------------------
-       AGE
-    ------------------------------------------------------- */
-
-    if (
-      age === undefined ||
-      age === null ||
-      age === ""
-    ) {
+    if (!dob) {
       return res.status(400).json({
-        message: "Age is required.",
+        message: "Date of birth is required.",
       });
     }
 
-    const numericAge = Number(age);
+    const parsedDob = new Date(dob);
 
-    if (
-      Number.isNaN(numericAge) ||
-      numericAge < 18
-    ) {
+    if (Number.isNaN(parsedDob.getTime())) {
       return res.status(400).json({
-        message:
-          "Age must be a valid number and at least 18.",
+        message: "Please provide a valid date of birth.",
       });
     }
 
-    /* -------------------------------------------------------
-       GENDER
-    ------------------------------------------------------- */
+    if (parsedDob > new Date()) {
+      return res.status(400).json({
+        message: "Date of birth cannot be in the future.",
+      });
+    }
 
-    if (
-      !gender ||
-      !["Male", "Female"].includes(gender)
-    ) {
+    if (!gender || !["Male", "Female"].includes(gender)) {
       return res.status(400).json({
         message: "Valid gender is required.",
       });
     }
 
-    /* -------------------------------------------------------
-       PHONE
-    ------------------------------------------------------- */
-
-    if (!phone?.trim()) {
+    if (!location?.trim()) {
       return res.status(400).json({
-        message: "Phone number is required.",
+        message: "Location is required.",
       });
     }
 
-    const cleanPhone = phone.trim();
-
-    /* -------------------------------------------------------
-       PHONE DUPLICATE CHECK
-    ------------------------------------------------------- */
-
-    const existingPhone = await User.findOne({
-      phone: cleanPhone,
-
-      _id: {
-        $ne: req.userId,
-      },
-    });
-
-    if (existingPhone) {
-      return res.status(409).json({
-        message:
-          "This phone number is already registered.",
-      });
-    }
-
-    /* -------------------------------------------------------
-       EDUCATION
-    ------------------------------------------------------- */
-
-    if (
-      education &&
-      !EDUCATION_OPTIONS.includes(education)
-    ) {
+    if (education && !EDUCATION_OPTIONS.includes(education)) {
       return res.status(400).json({
         message: "Invalid education selected.",
       });
     }
 
-    /* -------------------------------------------------------
-       INTERESTS
-    ------------------------------------------------------- */
-
     let interestsArray = [];
 
     if (Array.isArray(interests)) {
-      interestsArray = interests
-        .map((item) => String(item).trim())
-        .filter(Boolean);
+      interestsArray = [
+        ...new Set(
+          interests.map((item) => String(item).trim()).filter(Boolean),
+        ),
+      ];
     } else if (typeof interests === "string") {
-      interestsArray = interests
-        .split(",")
-        .map((item) => item.trim())
-        .filter(Boolean);
+      interestsArray = [
+        ...new Set(
+          interests
+            .split(",")
+            .map((item) => item.trim())
+            .filter(Boolean),
+        ),
+      ];
     }
-
-    /* -------------------------------------------------------
-       UPDATE DATA
-    ------------------------------------------------------- */
 
     const updates = {
       fullName: fullName.trim(),
 
-      age: numericAge,
+      dob: parsedDob,
 
       gender,
 
-      phone: cleanPhone,
+      location: location.trim(),
 
-      education:
-        education?.trim() || "",
+      education: education?.trim() || "",
 
-      occupation:
-        occupation?.trim() || "",
+      occupation: occupation?.trim() || "",
 
-      city:
-        city?.trim() || "",
+      height: height?.trim() || "",
 
-      height:
-        height?.trim() || "",
+      weight: weight?.trim() || "",
 
-      fatherName:
-        fatherName?.trim() || "",
+      fatherName: fatherName?.trim() || "",
 
-      motherName:
-        motherName?.trim() || "",
+      fatherMobile: fatherMobile?.trim() || "",
 
-      fatherMobile:
-        fatherMobile?.trim() || "",
-
-      familyDetails:
-        familyDetails?.trim() || "",
-
-      bio:
-        bio?.trim() || "",
+      motherName: motherName?.trim() || "",
 
       interests: interestsArray,
 
       profileCompleted: true,
     };
 
-    /* -------------------------------------------------------
-       SAVE
-    ------------------------------------------------------- */
-
-    const updatedUser =
-      await User.findByIdAndUpdate(
-        req.userId,
-        updates,
-        {
-          new: true,
-          runValidators: true,
-        },
-      ).select("-passwordHash");
+    const updatedUser = await User.findByIdAndUpdate(req.userId, updates, {
+      new: true,
+      runValidators: true,
+    })
+      .select("-password")
+      .lean();
 
     if (!updatedUser) {
       return res.status(404).json({
@@ -491,169 +314,107 @@ router.put("/me", auth, async (req, res) => {
       });
     }
 
-    console.log(
-      "PROFILE UPDATED:",
-      updatedUser._id,
-    );
-
-    console.log(
-      "PROFILE COMPLETED:",
-      updatedUser.profileCompleted,
-    );
-
     return res.json({
-      message:
-        "Profile updated successfully.",
+      message: "Profile updated successfully.",
 
       user: updatedUser,
     });
   } catch (error) {
-    console.error(
-      "PROFILE UPDATE ERROR:",
-      error,
-    );
+    console.error("PROFILE UPDATE ERROR:", error);
 
     return res.status(400).json({
-      message:
-        error.message ||
-        "Failed to update profile",
+      message: error.message || "Failed to update profile",
     });
   }
 });
 
-/* =========================================================
-   UPLOAD PROFILE PHOTO
-   POST /profiles/me/photo
-========================================================= */
-
-router.post(
-  "/me/photo",
-  auth,
-  upload.single("photo"),
-  async (req, res) => {
-    try {
-      if (!req.file) {
-        return res.status(400).json({
-          message: "No photo file provided.",
-        });
-      }
-
-      const photoRelativePath =
-        `/uploads/${req.file.filename}`;
-
-      const updatedUser =
-        await User.findByIdAndUpdate(
-          req.userId,
-          {
-            profilePhoto:
-              photoRelativePath,
-          },
-          {
-            new: true,
-          },
-        ).select("-passwordHash");
-
-      if (!updatedUser) {
-        return res.status(404).json({
-          message: "User not found.",
-        });
-      }
-
-      return res.json({
-        message:
-          "Profile photo uploaded successfully.",
-
-        profilePhoto:
-          photoRelativePath,
-
-        user: updatedUser,
-      });
-    } catch (error) {
-      console.error(
-        "PHOTO UPLOAD ERROR:",
-        error,
-      );
-
-      return res.status(500).json({
-        message:
-          "Failed to upload profile photo",
+router.post("/me/photo", auth, upload.single("photo"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        message: "No photo file provided.",
       });
     }
-  },
-);
 
-/* =========================================================
-   UPLOAD BIODATA
-   POST /profiles/me/biodata
-========================================================= */
+    const currentUser = await User.findById(req.userId);
 
-router.post(
-  "/me/biodata",
-  auth,
-  upload.single("biodata"),
-  async (req, res) => {
-    try {
-      if (!req.file) {
-        return res.status(400).json({
-          message:
-            "No biodata file provided.",
-        });
-      }
-
-      const biodataRelativePath =
-        `/uploads/${req.file.filename}`;
-
-      const updatedUser =
-        await User.findByIdAndUpdate(
-          req.userId,
-          {
-            biodataUrl:
-              biodataRelativePath,
-          },
-          {
-            new: true,
-          },
-        ).select("-passwordHash");
-
-      if (!updatedUser) {
-        return res.status(404).json({
-          message: "User not found.",
-        });
-      }
-
-      return res.json({
-        message:
-          "Biodata document uploaded successfully.",
-
-        biodataUrl:
-          biodataRelativePath,
-
-        user: updatedUser,
-      });
-    } catch (error) {
-      console.error(
-        "BIODATA UPLOAD ERROR:",
-        error,
-      );
-
-      return res.status(500).json({
-        message:
-          "Failed to upload biodata",
+    if (!currentUser) {
+      return res.status(404).json({
+        message: "User not found.",
       });
     }
-  },
-);
 
-/* =========================================================
-   GET SINGLE PROFILE
-   GET /profiles/:id
-========================================================= */
+    const result = await uploadToCloudinary(
+      req.file.buffer,
+      "matrimony/profile-photos",
+    );
+
+    const oldPublicId = currentUser.profilePhotoPublicId;
+
+    currentUser.profilePhoto = result.secure_url;
+
+    currentUser.profilePhotoPublicId = result.public_id;
+
+    await currentUser.save();
+
+    if (oldPublicId) {
+      await deleteFromCloudinary(oldPublicId);
+    }
+
+    const updatedUser = await User.findById(req.userId)
+      .select("-password")
+      .lean();
+
+    return res.json({
+      message: "Profile photo uploaded successfully.",
+
+      profilePhoto: result.secure_url,
+
+      user: updatedUser,
+    });
+  } catch (error) {
+    console.error("PHOTO UPLOAD ERROR:", error);
+
+    return res.status(500).json({
+      message: error.message || "Failed to upload profile photo",
+    });
+  }
+});
+
+router.delete("/me/photo", auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.userId);
+
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found.",
+      });
+    }
+
+    if (user.profilePhotoPublicId) {
+      await deleteFromCloudinary(user.profilePhotoPublicId);
+    }
+
+    user.profilePhoto = "";
+    user.profilePhotoPublicId = "";
+
+    await user.save();
+
+    return res.json({
+      message: "Profile photo removed successfully.",
+    });
+  } catch (error) {
+    console.error("PHOTO DELETE ERROR:", error);
+
+    return res.status(500).json({
+      message: "Failed to remove profile photo",
+    });
+  }
+});
 
 router.get("/:id", auth, async (req, res) => {
   try {
-    const user = await User.findById(
-      req.params.id,
-    ).select("-passwordHash");
+    const user = await User.findById(req.params.id).select("-password").lean();
 
     if (!user) {
       return res.status(404).json({
@@ -663,10 +424,7 @@ router.get("/:id", auth, async (req, res) => {
 
     return res.json(user);
   } catch (error) {
-    console.error(
-      "GET PROFILE ERROR:",
-      error,
-    );
+    console.error("GET PROFILE ERROR:", error);
 
     return res.status(400).json({
       message: "Invalid profile id",

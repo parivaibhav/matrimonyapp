@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -13,7 +13,6 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { api } from "../api";
 import { colors, shadow } from "../theme";
@@ -21,288 +20,206 @@ import { useResponsiveLayout } from "../utils/responsive";
 
 export default function SignupScreen({ navigation }) {
   const [email, setEmail] = useState("");
-  const [otp, setOtp] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
 
-  const [sendingOtp, setSendingOtp] = useState(false);
-  const [verifying, setVerifying] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  const [otpSent, setOtpSent] = useState(false);
-  const [remainingSeconds, setRemainingSeconds] = useState(0);
+  const [loading, setLoading] = useState(false);
 
   const { isSmallPhone, isTablet } = useResponsiveLayout();
 
   /* =========================================================
-     EMAIL VALIDATION
+     EMAIL
   ========================================================= */
 
-  function getEmail() {
-    const normalizedEmail = email.trim().toLowerCase();
+  function normalizeEmail(value) {
+    return String(value || "")
+      .trim()
+      .toLowerCase();
+  }
+
+  function isValidEmail(value) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+  }
+
+  /* =========================================================
+     PASSWORD
+  ========================================================= */
+
+  function isValidPassword(value) {
+    return String(value || "").length >= 6;
+  }
+
+  /* =========================================================
+     ERROR HANDLER
+  ========================================================= */
+
+  function getErrorMessage(error, fallback) {
+    const status = error?.response?.status;
+    const serverMessage = error?.response?.data?.message;
+
+    if (serverMessage) {
+      return serverMessage;
+    }
+
+    if (
+      error?.code === "ERR_NETWORK" ||
+      error?.message === "Network Error" ||
+      !error?.response
+    ) {
+      return (
+        "Cannot connect to the backend server.\n\n" +
+        "Please make sure:\n" +
+        "• Your backend server is running\n" +
+        "• Your API URL is correct\n" +
+        "• Your Render backend is awake\n" +
+        "• Your device has internet access"
+      );
+    }
+
+    if (status === 400) {
+      return "Please check the information you entered.";
+    }
+
+    if (status === 409) {
+      return "An account with this email already exists.";
+    }
+
+    if (status === 404) {
+      return "Signup API endpoint was not found. Please check your backend routes.";
+    }
+
+    if (status === 500) {
+      return "Server error. Please check your backend logs.";
+    }
+
+    if (status === 502 || status === 503 || status === 504) {
+      return "Backend server is currently unavailable. Please try again.";
+    }
+
+    return error?.message || fallback;
+  }
+
+  /* =========================================================
+     SIGNUP
+  ========================================================= */
+
+  async function handleSignup() {
+    const normalizedEmail = normalizeEmail(email);
+
+    const cleanPassword = String(password || "");
+
+    const cleanConfirmPassword = String(confirmPassword || "");
 
     if (!normalizedEmail) {
       Alert.alert("Email required", "Please enter your email address.");
-      return null;
+      return;
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-    if (!emailRegex.test(normalizedEmail)) {
+    if (!isValidEmail(normalizedEmail)) {
       Alert.alert("Invalid email", "Please enter a valid email address.");
-      return null;
+      return;
     }
 
-    return normalizedEmail;
-  }
+    if (!cleanPassword) {
+      Alert.alert("Password required", "Please create a password.");
+      return;
+    }
 
-  /* =========================================================
-     SEND OTP
-  ========================================================= */
+    if (!isValidPassword(cleanPassword)) {
+      Alert.alert(
+        "Password too short",
+        "Password must be at least 6 characters.",
+      );
+      return;
+    }
 
-  async function sendOtp() {
-    const normalizedEmail = getEmail();
+    if (!cleanConfirmPassword) {
+      Alert.alert("Confirm password", "Please confirm your password.");
+      return;
+    }
 
-    if (!normalizedEmail) return;
+    if (cleanPassword !== cleanConfirmPassword) {
+      Alert.alert(
+        "Passwords do not match",
+        "Please make sure both passwords are the same.",
+      );
+      return;
+    }
 
-    if (remainingSeconds > 0) {
+    if (loading) {
       return;
     }
 
     try {
-      setSendingOtp(true);
+      setLoading(true);
 
-      console.log("SEND OTP REQUEST:", {
-        email: normalizedEmail,
-      });
+      console.log("================================");
+      console.log("SIGNUP REQUEST");
+      console.log("EMAIL:", normalizedEmail);
+      console.log("================================");
 
       const response = await api.post("/auth/signup", {
         email: normalizedEmail,
+        password: cleanPassword,
       });
 
-      console.log("SEND OTP RESPONSE:", response.data);
-
-      setEmail(normalizedEmail);
-      setOtp("");
-      setOtpSent(true);
-
-      const expiresIn = Number(response.data?.expiresIn) || 600;
-
-      setRemainingSeconds(expiresIn);
-
-      Alert.alert(
-        "OTP sent",
-        `A verification code has been sent to ${normalizedEmail}.`,
-      );
-    } catch (error) {
-      console.log("SEND OTP ERROR:", error);
-      console.log("SEND OTP ERROR RESPONSE:", error.response?.data);
-
-      let message = "Unable to send verification code.";
-
-      if (error.response?.data?.message) {
-        message = error.response.data.message;
-      } else if (error.message === "Network Error") {
-        message = "Cannot connect to backend server.";
-      } else if (error.message) {
-        message = error.message;
-      }
-
-      Alert.alert("Send OTP failed", message);
-    } finally {
-      setSendingOtp(false);
-    }
-  }
-
-  /* =========================================================
-     RESEND OTP
-  ========================================================= */
-
-  async function resendOtp() {
-    const normalizedEmail = getEmail();
-
-    if (!normalizedEmail) return;
-
-    if (remainingSeconds > 0) {
-      return;
-    }
-
-    try {
-      setSendingOtp(true);
-
-      console.log("RESEND OTP REQUEST:", {
-        email: normalizedEmail,
-      });
-
-      const response = await api.post("/auth/resend-signup-otp", {
-        email: normalizedEmail,
-      });
-
-      console.log("RESEND OTP RESPONSE:", response.data);
-
-      setOtp("");
-      setOtpSent(true);
-
-      const expiresIn = Number(response.data?.expiresIn) || 600;
-
-      setRemainingSeconds(expiresIn);
-
-      Alert.alert(
-        "OTP resent",
-        `A new verification code has been sent to ${normalizedEmail}.`,
-      );
-    } catch (error) {
-      console.log("RESEND OTP ERROR:", error);
-      console.log("RESEND OTP ERROR RESPONSE:", error.response?.data);
-
-      let message = "Unable to resend verification code.";
-
-      if (error.response?.data?.message) {
-        message = error.response.data.message;
-      } else if (error.message === "Network Error") {
-        message = "Cannot connect to backend server.";
-      } else if (error.message) {
-        message = error.message;
-      }
-
-      Alert.alert("Resend failed", message);
-    } finally {
-      setSendingOtp(false);
-    }
-  }
-
-  /* =========================================================
-     VERIFY OTP
-  ========================================================= */
-
-  async function verifyOtp() {
-    const normalizedEmail = getEmail();
-
-    if (!normalizedEmail) return;
-
-    const cleanOtp = otp.replace(/\D/g, "");
-
-    if (!cleanOtp) {
-      Alert.alert("OTP required", "Please enter the verification code.");
-      return;
-    }
-
-    if (cleanOtp.length !== 6) {
-      Alert.alert("Invalid OTP", "Please enter the 6-digit verification code.");
-      return;
-    }
-
-    try {
-      setVerifying(true);
-
-      console.log("VERIFY SIGNUP OTP REQUEST:", {
-        email: normalizedEmail,
-        otp: cleanOtp,
-      });
+      console.log("SIGNUP RESPONSE:", response.data);
 
       /*
-       * IMPORTANT:
-       * Backend route is /auth/verify-signup
+       * Some backends return the token immediately.
+       * If yours does, save it here.
        */
-      const response = await api.post("/auth/verify-signup", {
-        email: normalizedEmail,
-        otp: cleanOtp,
-      });
 
-      console.log("VERIFY SIGNUP OTP RESPONSE:", response.data);
-
-      const { token, user } = response.data || {};
-
-      /* =====================================================
-         STORE LOGIN TOKEN
-      ===================================================== */
+      const token = response.data?.token;
 
       if (token) {
-        await AsyncStorage.setItem("token", token);
+        const AsyncStorage =
+          require("@react-native-async-storage/async-storage").default;
 
-        if (user) {
-          await AsyncStorage.setItem("user", JSON.stringify(user));
-        }
+        await AsyncStorage.setItem("token", token);
       }
 
-      setOtp("");
-      setRemainingSeconds(0);
+      /*
+       * Go directly to profile completion.
+       */
 
       Alert.alert(
-        "Email verified",
-        response.data?.message || "Your email has been verified successfully.",
+        "Account created",
+        response.data?.message || "Your account has been created successfully.",
         [
           {
             text: "Continue",
             onPress: () => {
-              if (navigation.canGoBack()) {
-                navigation.goBack();
-              }
+              navigation.replace("CompleteProfile");
             },
           },
         ],
       );
     } catch (error) {
-      console.log("VERIFY OTP ERROR:", error);
+      console.log("SIGNUP ERROR:", error);
 
-      console.log("VERIFY OTP ERROR RESPONSE:", error.response?.data);
+      console.log("SIGNUP RESPONSE:", error?.response?.data);
 
-      let message = "Unable to verify the code.";
+      const message = getErrorMessage(error, "Unable to create your account.");
 
-      if (error.response?.data?.message) {
-        message = error.response.data.message;
-      } else if (error.message === "Network Error") {
-        message = "Cannot connect to backend server.";
-      } else if (error.message) {
-        message = error.message;
-      }
-
-      Alert.alert("Verification failed", message);
+      Alert.alert("Signup failed", message);
     } finally {
-      setVerifying(false);
+      setLoading(false);
     }
   }
 
   /* =========================================================
-     OTP INPUT
+     PASSWORD STRENGTH
   ========================================================= */
 
-  function handleOtpChange(value) {
-    const cleanValue = value.replace(/\D/g, "").slice(0, 6);
+  const passwordLength = password.length;
 
-    setOtp(cleanValue);
-  }
+  const passwordValid = passwordLength >= 6;
 
-  /* =========================================================
-     TIMER
-  ========================================================= */
-
-  useEffect(() => {
-    if (remainingSeconds <= 0) {
-      return;
-    }
-
-    const timer = setInterval(() => {
-      setRemainingSeconds((previous) => {
-        if (previous <= 1) {
-          clearInterval(timer);
-          return 0;
-        }
-
-        return previous - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [remainingSeconds]);
-
-  /* =========================================================
-     FORMAT TIMER
-  ========================================================= */
-
-  function formatTime(seconds) {
-    const minutes = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-
-    return `${minutes}:${String(secs).padStart(2, "0")}`;
-  }
+  const passwordsMatch = password.length > 0 && password === confirmPassword;
 
   /* =========================================================
      UI
@@ -324,14 +241,12 @@ export default function SignupScreen({ navigation }) {
           showsVerticalScrollIndicator={false}
         >
           <View style={[styles.card, isTablet && styles.tabletCard]}>
-            {/* =================================================
-                HEADER
-            ================================================= */}
+            {/* HEADER */}
 
             <View style={styles.header}>
               <View style={styles.iconCircle}>
                 <Ionicons
-                  name="mail-open-outline"
+                  name="person-add-outline"
                   size={30}
                   color={colors.primary}
                 />
@@ -342,13 +257,12 @@ export default function SignupScreen({ navigation }) {
               </Text>
 
               <Text style={styles.subtitle}>
-                Enter your email and verify it with a one-time code.
+                Create your account with your email and password, then complete
+                your profile.
               </Text>
             </View>
 
-            {/* =================================================
-                EMAIL INPUT
-            ================================================= */}
+            {/* EMAIL */}
 
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Email address</Text>
@@ -377,198 +291,238 @@ export default function SignupScreen({ navigation }) {
                   autoCorrect={false}
                   autoComplete="email"
                   textContentType="emailAddress"
-                  editable={!sendingOtp && !verifying}
+                  editable={!loading}
                   returnKeyType="next"
                 />
               </View>
 
               <Text style={styles.helperText}>
-                Enter the email address you want to verify.
+                Use an email address you can access.
               </Text>
             </View>
 
-            {/* =================================================
-                OTP INPUT
-            ================================================= */}
+            {/* PASSWORD */}
 
             <View style={styles.inputGroup}>
-              <View style={styles.labelRow}>
-                <Text style={styles.label}>Verification code</Text>
-
-                {otpSent && (
-                  <View style={styles.sentBadge}>
-                    <View style={styles.sentDot} />
-
-                    <Text style={styles.sentText}>Code sent</Text>
-                  </View>
-                )}
-              </View>
+              <Text style={styles.label}>Password</Text>
 
               <View
                 style={[
-                  styles.otpRow,
-                  otp.length > 0 && styles.otpRowActive,
-                  otp.length === 6 && styles.otpRowComplete,
+                  styles.inputContainer,
+                  password.length > 0 && styles.inputContainerActive,
+                  password.length > 0 &&
+                    !passwordValid &&
+                    styles.inputContainerError,
                 ]}
               >
-                <View style={styles.otpInputWrapper}>
-                  <Ionicons
-                    name="keypad-outline"
-                    size={20}
-                    color={otp.length > 0 ? colors.primary : colors.muted}
-                    style={styles.otpIcon}
-                  />
+                <Ionicons
+                  name="lock-closed-outline"
+                  size={20}
+                  color={password.length > 0 ? colors.primary : colors.muted}
+                  style={styles.inputIcon}
+                />
 
-                  <TextInput
-                    style={styles.otpInput}
-                    placeholder="Enter 6-digit OTP"
-                    placeholderTextColor={colors.muted}
-                    value={otp}
-                    onChangeText={handleOtpChange}
-                    keyboardType="number-pad"
-                    maxLength={6}
-                    editable={!verifying}
-                    returnKeyType="done"
-                    onSubmitEditing={verifyOtp}
-                  />
-                </View>
-
-                {/* SEND / TIMER BUTTON */}
+                <TextInput
+                  style={styles.input}
+                  placeholder="Create a password"
+                  placeholderTextColor={colors.muted}
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoComplete="password-new"
+                  textContentType="newPassword"
+                  editable={!loading}
+                  returnKeyType="next"
+                />
 
                 <Pressable
-                  style={[
-                    styles.sendOtpButton,
-                    (sendingOtp || remainingSeconds > 0) &&
-                      styles.sendOtpButtonDisabled,
-                  ]}
-                  onPress={otpSent ? resendOtp : sendOtp}
-                  disabled={sendingOtp || remainingSeconds > 0 || verifying}
+                  onPress={() => setShowPassword((value) => !value)}
+                  hitSlop={10}
+                  style={styles.eyeButton}
                 >
-                  {sendingOtp ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <Text style={styles.sendOtpText}>
-                      {remainingSeconds > 0
-                        ? formatTime(remainingSeconds)
-                        : otpSent
-                          ? "Resend"
-                          : "Send OTP"}
-                    </Text>
-                  )}
+                  <Ionicons
+                    name={showPassword ? "eye-off-outline" : "eye-outline"}
+                    size={21}
+                    color={colors.muted}
+                  />
                 </Pressable>
               </View>
 
-              <Text style={styles.helperText}>
-                A 6-digit verification code will be sent to your email.
-              </Text>
+              <View style={styles.passwordInfo}>
+                <View
+                  style={[
+                    styles.passwordDot,
+                    passwordValid && styles.passwordDotValid,
+                  ]}
+                />
+
+                <Text
+                  style={[styles.helperText, passwordValid && styles.validText]}
+                >
+                  Minimum 6 characters
+                </Text>
+              </View>
             </View>
 
-            {/* =================================================
-                VERIFY BUTTON
-            ================================================= */}
+            {/* CONFIRM PASSWORD */}
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Confirm password</Text>
+
+              <View
+                style={[
+                  styles.inputContainer,
+                  confirmPassword.length > 0 && styles.inputContainerActive,
+                  passwordsMatch && styles.inputContainerSuccess,
+                  confirmPassword.length > 0 &&
+                    !passwordsMatch &&
+                    styles.inputContainerError,
+                ]}
+              >
+                <Ionicons
+                  name="shield-checkmark-outline"
+                  size={20}
+                  color={
+                    passwordsMatch
+                      ? "#22C55E"
+                      : confirmPassword.length > 0
+                        ? colors.primary
+                        : colors.muted
+                  }
+                  style={styles.inputIcon}
+                />
+
+                <TextInput
+                  style={styles.input}
+                  placeholder="Confirm your password"
+                  placeholderTextColor={colors.muted}
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  secureTextEntry={!showConfirmPassword}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoComplete="password"
+                  textContentType="password"
+                  editable={!loading}
+                  returnKeyType="done"
+                  onSubmitEditing={handleSignup}
+                />
+
+                <Pressable
+                  onPress={() => setShowConfirmPassword((value) => !value)}
+                  hitSlop={10}
+                  style={styles.eyeButton}
+                >
+                  <Ionicons
+                    name={
+                      showConfirmPassword ? "eye-off-outline" : "eye-outline"
+                    }
+                    size={21}
+                    color={colors.muted}
+                  />
+                </Pressable>
+              </View>
+
+              {confirmPassword.length > 0 && (
+                <View style={styles.passwordInfo}>
+                  <Ionicons
+                    name={passwordsMatch ? "checkmark-circle" : "close-circle"}
+                    size={15}
+                    color={passwordsMatch ? "#22C55E" : "#EF4444"}
+                  />
+
+                  <Text
+                    style={[
+                      styles.helperText,
+                      {
+                        color: passwordsMatch ? "#16A34A" : "#EF4444",
+                      },
+                    ]}
+                  >
+                    {passwordsMatch
+                      ? "Passwords match"
+                      : "Passwords do not match"}
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            {/* CREATE ACCOUNT */}
 
             <Pressable
               style={({ pressed }) => [
-                styles.verifyButton,
-                (verifying || otp.length !== 6) && styles.verifyButtonDisabled,
-                pressed &&
-                  !verifying &&
-                  otp.length === 6 &&
-                  styles.buttonPressed,
+                styles.signupButton,
+
+                (loading ||
+                  !passwordValid ||
+                  !passwordsMatch ||
+                  !isValidEmail(normalizeEmail(email))) &&
+                  styles.signupButtonDisabled,
+
+                pressed && !loading && styles.buttonPressed,
               ]}
-              onPress={verifyOtp}
-              disabled={verifying || otp.length !== 6}
+              onPress={handleSignup}
+              disabled={
+                loading ||
+                !passwordValid ||
+                !passwordsMatch ||
+                !isValidEmail(normalizeEmail(email))
+              }
             >
-              {verifying ? (
+              {loading ? (
                 <View style={styles.loadingContent}>
                   <ActivityIndicator size="small" color="#fff" />
 
-                  <Text style={styles.buttonText}>Verifying...</Text>
+                  <Text style={styles.buttonText}>Creating account...</Text>
                 </View>
               ) : (
                 <View style={styles.buttonContent}>
-                  <Text style={styles.buttonText}>Verify Email</Text>
+                  <Text style={styles.buttonText}>Create Account</Text>
 
-                  <Ionicons
-                    name="checkmark-circle-outline"
-                    size={21}
-                    color="#fff"
-                  />
+                  <Ionicons name="arrow-forward" size={21} color="#fff" />
                 </View>
               )}
             </Pressable>
 
-            {/* =================================================
-                RESEND
-            ================================================= */}
-
-            <View style={styles.resendRow}>
-              <Text style={styles.resendText}>Didn't receive the code?</Text>
-
-              {remainingSeconds > 0 ? (
-                <Text style={styles.timerText}>
-                  Resend in {formatTime(remainingSeconds)}
-                </Text>
-              ) : (
-                <Pressable
-                  onPress={resendOtp}
-                  disabled={sendingOtp || verifying || !otpSent}
-                  hitSlop={8}
-                >
-                  <Text
-                    style={[
-                      styles.resendLink,
-                      !otpSent && styles.resendLinkDisabled,
-                    ]}
-                  >
-                    Resend OTP
-                  </Text>
-                </Pressable>
-              )}
-            </View>
-
-            {/* =================================================
-                INFO BOX
-            ================================================= */}
+            {/* PROFILE INFO */}
 
             <View style={styles.infoBox}>
               <View style={styles.infoIcon}>
                 <Ionicons
-                  name="shield-checkmark-outline"
-                  size={20}
+                  name="person-circle-outline"
+                  size={21}
                   color={colors.primary}
                 />
               </View>
 
               <View style={styles.infoContent}>
-                <Text style={styles.infoTitle}>Secure verification</Text>
+                <Text style={styles.infoTitle}>Complete your profile</Text>
 
                 <Text style={styles.infoText}>
-                  We use email OTP verification instead of passwords. Never
-                  share your verification code with anyone.
+                  After creating your account, you'll add your name, date of
+                  birth, location, education, occupation, interests, family
+                  details and profile photo.
                 </Text>
               </View>
             </View>
 
-            {/* =================================================
-                LOGIN
-            ================================================= */}
+            {/* LOGIN */}
 
             <View style={styles.loginRow}>
               <Text style={styles.loginText}>Already have an account?</Text>
 
               <Pressable
                 onPress={() => navigation.goBack()}
-                disabled={sendingOtp || verifying}
+                disabled={loading}
                 hitSlop={8}
               >
                 <Text style={styles.loginLink}>Login</Text>
               </Pressable>
             </View>
 
-            {/* =================================================
-                TERMS
-            ================================================= */}
+            {/* TERMS */}
 
             <Text style={styles.termsText}>
               By continuing, you agree to our Terms of Service and Privacy
@@ -620,10 +574,6 @@ const styles = StyleSheet.create({
     ...shadow,
   },
 
-  /* =======================================================
-     HEADER
-  ======================================================= */
-
   header: {
     alignItems: "center",
     marginBottom: 30,
@@ -657,28 +607,18 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     textAlign: "center",
-    maxWidth: 400,
+    maxWidth: 410,
   },
-
-  /* =======================================================
-     INPUT
-  ======================================================= */
 
   inputGroup: {
-    marginBottom: 20,
-  },
-
-  labelRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 9,
+    marginBottom: 19,
   },
 
   label: {
     fontSize: 14,
     fontWeight: "800",
     color: colors.text,
+    marginBottom: 9,
   },
 
   inputContainer: {
@@ -695,6 +635,14 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
   },
 
+  inputContainerError: {
+    borderColor: "#EF4444",
+  },
+
+  inputContainerSuccess: {
+    borderColor: "#22C55E",
+  },
+
   inputIcon: {
     marginLeft: 16,
     marginRight: 4,
@@ -704,109 +652,48 @@ const styles = StyleSheet.create({
     flex: 1,
     height: "100%",
     paddingHorizontal: 12,
-    paddingRight: 16,
     fontSize: 16,
     color: colors.text,
+  },
+
+  eyeButton: {
+    paddingHorizontal: 15,
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   helperText: {
     color: colors.muted,
     fontSize: 12,
     lineHeight: 18,
-    marginTop: 8,
+    marginTop: 7,
   },
 
-  /* =======================================================
-     OTP
-  ======================================================= */
-
-  otpRow: {
-    height: 58,
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 15,
+  passwordInfo: {
     flexDirection: "row",
     alignItems: "center",
-    overflow: "hidden",
+    gap: 6,
+    marginTop: 1,
   },
 
-  otpRowActive: {
-    borderColor: colors.primary,
+  passwordDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: colors.muted,
   },
 
-  otpRowComplete: {
-    borderColor: "#22C55E",
-  },
-
-  otpInputWrapper: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  otpIcon: {
-    marginLeft: 15,
-    marginRight: 4,
-  },
-
-  otpInput: {
-    flex: 1,
-    height: "100%",
-    paddingHorizontal: 10,
-    fontSize: 16,
-    color: colors.text,
-    letterSpacing: 2,
-  },
-
-  sendOtpButton: {
-    height: "100%",
-    minWidth: 92,
-    paddingHorizontal: 14,
-    backgroundColor: colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  sendOtpButtonDisabled: {
-    opacity: 0.55,
-  },
-
-  sendOtpText: {
-    color: "#fff",
-    fontSize: 13,
-    fontWeight: "900",
-  },
-
-  sentBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#F0FDF4",
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 20,
-  },
-
-  sentDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+  passwordDotValid: {
     backgroundColor: "#22C55E",
-    marginRight: 5,
   },
 
-  sentText: {
+  validText: {
     color: "#16A34A",
-    fontSize: 11,
-    fontWeight: "800",
   },
 
-  /* =======================================================
-     VERIFY BUTTON
-  ======================================================= */
-
-  verifyButton: {
-    height: 56,
+  signupButton: {
+    height: 57,
     backgroundColor: colors.primary,
     borderRadius: 15,
     alignItems: "center",
@@ -814,7 +701,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  verifyButtonDisabled: {
+  signupButtonDisabled: {
     opacity: 0.45,
   },
 
@@ -846,45 +733,6 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     fontSize: 16,
   },
-
-  /* =======================================================
-     RESEND
-  ======================================================= */
-
-  resendRow: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 17,
-    minHeight: 24,
-  },
-
-  resendText: {
-    color: colors.muted,
-    fontSize: 13,
-  },
-
-  resendLink: {
-    color: colors.primary,
-    fontSize: 13,
-    fontWeight: "900",
-    marginLeft: 5,
-  },
-
-  resendLinkDisabled: {
-    opacity: 0.4,
-  },
-
-  timerText: {
-    color: colors.muted,
-    fontSize: 13,
-    fontWeight: "700",
-    marginLeft: 5,
-  },
-
-  /* =======================================================
-     INFO
-  ======================================================= */
 
   infoBox: {
     flexDirection: "row",
@@ -921,10 +769,6 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
-  /* =======================================================
-     LOGIN
-  ======================================================= */
-
   loginRow: {
     flexDirection: "row",
     justifyContent: "center",
@@ -943,10 +787,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginLeft: 5,
   },
-
-  /* =======================================================
-     TERMS
-  ======================================================= */
 
   termsText: {
     color: colors.muted,
