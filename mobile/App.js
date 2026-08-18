@@ -26,14 +26,16 @@ import { useResponsiveLayout } from "./src/utils/responsive";
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
+/* =========================================================
+   MAIN TABS
+========================================================= */
+
 function MainTabs({ setLoggedIn }) {
   const insets = useSafeAreaInsets();
   const { isSmallPhone } = useResponsiveLayout();
 
-  // Bottom safe-area inset
   const bottomInset = Math.max(insets.bottom, 6);
 
-  // Dynamic tab height
   const tabHeight =
     (isSmallPhone ? 54 : 58) + (insets.bottom > 0 ? insets.bottom - 4 : 0);
 
@@ -42,14 +44,12 @@ function MainTabs({ setLoggedIn }) {
       screenOptions={({ route }) => ({
         headerShown: false,
 
-        // Tab colors
         tabBarActiveTintColor: colors.primary,
+
         tabBarInactiveTintColor: "#8E8E93",
 
-        // Hide tab bar when keyboard opens
         tabBarHideOnKeyboard: true,
 
-        // Tab label
         tabBarLabelStyle: {
           fontSize: isSmallPhone ? 10 : 11,
           fontWeight: "600",
@@ -57,11 +57,9 @@ function MainTabs({ setLoggedIn }) {
           marginBottom: insets.bottom > 0 ? 0 : 4,
         },
 
-        // Tab bar
         tabBarStyle: {
           height: tabHeight,
           paddingTop: 6,
-          // paddingBottom: 10,
           paddingBottom: bottomInset,
           backgroundColor: "#FFFFFF",
           borderTopWidth: 1,
@@ -72,7 +70,6 @@ function MainTabs({ setLoggedIn }) {
           marginHorizontal: 10,
         },
 
-        // Tab icons
         tabBarIcon: ({ focused, color }) => {
           let iconName;
 
@@ -94,7 +91,6 @@ function MainTabs({ setLoggedIn }) {
         },
       })}
     >
-      {/* ================= HOME TAB ================= */}
       <Tab.Screen
         name="Home"
         component={HomeScreen}
@@ -103,7 +99,6 @@ function MainTabs({ setLoggedIn }) {
         }}
       />
 
-      {/* ================= INTERESTS TAB ================= */}
       <Tab.Screen
         name="Interests"
         component={InterestsScreen}
@@ -112,7 +107,6 @@ function MainTabs({ setLoggedIn }) {
         }}
       />
 
-      {/* ================= PROFILE TAB ================= */}
       <Tab.Screen
         name="Profile"
         options={{
@@ -125,8 +119,12 @@ function MainTabs({ setLoggedIn }) {
   );
 }
 
+/* =========================================================
+   APP
+========================================================= */
+
 export default function App() {
-  const [loggedIn, setLoggedIn] = useState(null);
+  const [authState, setAuthState] = useState(null);
 
   useEffect(() => {
     checkLogin();
@@ -136,17 +134,44 @@ export default function App() {
     try {
       const token = await AsyncStorage.getItem("token");
 
-      setLoggedIn(!!token);
+      if (!token) {
+        setAuthState({
+          loggedIn: false,
+          profileCompleted: false,
+        });
+
+        return;
+      }
+
+      const storedUser = await AsyncStorage.getItem("user");
+
+      let user = null;
+
+      try {
+        user = storedUser ? JSON.parse(storedUser) : null;
+      } catch {
+        user = null;
+      }
+
+      setAuthState({
+        loggedIn: true,
+        profileCompleted: user?.profileCompleted === true,
+      });
     } catch (error) {
       console.log("AUTH CHECK ERROR:", error);
 
-      setLoggedIn(false);
+      setAuthState({
+        loggedIn: false,
+        profileCompleted: false,
+      });
     }
   }
 
-  // ================= AUTH CHECK LOADING =================
+  /* =======================================================
+     LOADING
+  ======================================================= */
 
-  if (loggedIn === null) {
+  if (authState === null) {
     return (
       <SafeAreaProvider>
         <View
@@ -171,50 +196,91 @@ export default function App() {
             headerShown: false,
           }}
         >
-          {!loggedIn ? (
-            <>
-              {/* ================= LOGIN ================= */}
+          {/* =================================================
+              LOGGED OUT
+          ================================================= */}
 
+          {!authState.loggedIn ? (
+            <>
               <Stack.Screen name="Login">
                 {(props) => (
-                  <LoginScreen {...props} setLoggedIn={setLoggedIn} />
+                  <LoginScreen
+                    {...props}
+                    setLoggedIn={(value) => {
+                      if (value) {
+                        checkLogin();
+                      } else {
+                        setAuthState({
+                          loggedIn: false,
+                          profileCompleted: false,
+                        });
+                      }
+                    }}
+                  />
                 )}
               </Stack.Screen>
 
-              {/* ================= SIGNUP ================= */}
-
-              <Stack.Screen name="Signup" component={SignupScreen} />
+              <Stack.Screen name="Signup">
+                {(props) => (
+                  <SignupScreen
+                    {...props}
+                    setLoggedIn={(value) => {
+                      if (value) {
+                        checkLogin();
+                      }
+                    }}
+                  />
+                )}
+              </Stack.Screen>
             </>
           ) : (
             <>
-              {/* ================= MAIN TABS ================= */}
+              {/* =================================================
+                  PROFILE NOT COMPLETED
+              ================================================= */}
 
-              <Stack.Screen name="Main">
-                {(props) => <MainTabs {...props} setLoggedIn={setLoggedIn} />}
-              </Stack.Screen>
+              {!authState.profileCompleted ? (
+                <Stack.Screen
+                  name="CompleteProfile"
+                  component={CompleteProfileScreen}
+                />
+              ) : (
+                /* =================================================
+                   PROFILE COMPLETED
+                ================================================= */
 
-              {/* ================= SEARCH ================= */}
-              {/* Search is a Stack screen, NOT a bottom tab */}
+                <>
+                  <Stack.Screen name="Main">
+                    {(props) => (
+                      <MainTabs
+                        {...props}
+                        setLoggedIn={(value) => {
+                          if (!value) {
+                            AsyncStorage.multiRemove(["token", "user"]);
 
-              <Stack.Screen name="Search" component={SearchScreen} />
+                            setAuthState({
+                              loggedIn: false,
+                              profileCompleted: false,
+                            });
+                          }
+                        }}
+                      />
+                    )}
+                  </Stack.Screen>
 
-              {/* ================= PROFILE DETAIL ================= */}
+                  <Stack.Screen name="Search" component={SearchScreen} />
 
-              <Stack.Screen
-                name="ProfileDetail"
-                component={ProfileDetailScreen}
-              />
+                  <Stack.Screen
+                    name="ProfileDetail"
+                    component={ProfileDetailScreen}
+                  />
 
-              {/* ================= NOTIFICATIONS ================= */}
-
-              <Stack.Screen
-                name="Notifications"
-                component={NotificationsScreen}
-              />
-              <Stack.Screen
-                name="CompleteProfile"
-                component={CompleteProfileScreen}
-              />
+                  <Stack.Screen
+                    name="Notifications"
+                    component={NotificationsScreen}
+                  />
+                </>
+              )}
             </>
           )}
         </Stack.Navigator>

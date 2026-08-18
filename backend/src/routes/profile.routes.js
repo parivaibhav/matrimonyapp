@@ -193,6 +193,194 @@ router.get("/me/current", auth, async (req, res) => {
   }
 });
 
+// router.put("/me", auth, async (req, res) => {
+//   try {
+//     const {
+//       fullName,
+//       dob,
+//       gender,
+//       location,
+//       education,
+//       occupation,
+//       height,
+//       weight,
+//       fatherName,
+//       fatherMobile,
+//       motherName,
+//       interests,
+//     } = req.body;
+
+//     if (!fullName?.trim()) {
+//       return res.status(400).json({
+//         message: "Full name is required.",
+//       });
+//     }
+
+//     if (!dob) {
+//       return res.status(400).json({
+//         message: "Date of birth is required.",
+//       });
+//     }
+
+//     const parsedDob = new Date(dob);
+
+//     if (Number.isNaN(parsedDob.getTime())) {
+//       return res.status(400).json({
+//         message: "Please provide a valid date of birth.",
+//       });
+//     }
+
+//     if (parsedDob > new Date()) {
+//       return res.status(400).json({
+//         message: "Date of birth cannot be in the future.",
+//       });
+//     }
+
+//     if (!gender || !["Male", "Female"].includes(gender)) {
+//       return res.status(400).json({
+//         message: "Valid gender is required.",
+//       });
+//     }
+
+//     if (!location?.trim()) {
+//       return res.status(400).json({
+//         message: "Location is required.",
+//       });
+//     }
+
+//     if (education && !EDUCATION_OPTIONS.includes(education)) {
+//       return res.status(400).json({
+//         message: "Invalid education selected.",
+//       });
+//     }
+
+//     let interestsArray = [];
+
+//     if (Array.isArray(interests)) {
+//       interestsArray = [
+//         ...new Set(
+//           interests.map((item) => String(item).trim()).filter(Boolean),
+//         ),
+//       ];
+//     } else if (typeof interests === "string") {
+//       interestsArray = [
+//         ...new Set(
+//           interests
+//             .split(",")
+//             .map((item) => item.trim())
+//             .filter(Boolean),
+//         ),
+//       ];
+//     }
+
+//     const updates = {
+//       fullName: fullName.trim(),
+
+//       dob: parsedDob,
+
+//       gender,
+
+//       location: location.trim(),
+
+//       education: education?.trim() || "",
+
+//       occupation: occupation?.trim() || "",
+
+//       height: height?.trim() || "",
+
+//       weight: weight?.trim() || "",
+
+//       fatherName: fatherName?.trim() || "",
+
+//       fatherMobile: fatherMobile?.trim() || "",
+
+//       motherName: motherName?.trim() || "",
+
+//       interests: interestsArray,
+
+//       profileCompleted: true,
+//     };
+
+//     const updatedUser = await User.findByIdAndUpdate(req.userId, updates, {
+//       new: true,
+//       runValidators: true,
+//     })
+//       .select("-password")
+//       .lean();
+
+//     if (!updatedUser) {
+//       return res.status(404).json({
+//         message: "User not found.",
+//       });
+//     }
+
+//     return res.json({
+//       message: "Profile updated successfully.",
+
+//       user: updatedUser,
+//     });
+//   } catch (error) {
+//     console.error("PROFILE UPDATE ERROR:", error);
+
+//     return res.status(400).json({
+//       message: error.message || "Failed to update profile",
+//     });
+//   }
+// });
+
+// router.post("/me/photo", auth, upload.single("photo"), async (req, res) => {
+//   try {
+//     if (!req.file) {
+//       return res.status(400).json({
+//         message: "No photo file provided.",
+//       });
+//     }
+
+//     const currentUser = await User.findById(req.userId);
+
+//     if (!currentUser) {
+//       return res.status(404).json({
+//         message: "User not found.",
+//       });
+//     }
+
+//     const result = await uploadToCloudinary(
+//       req.file.buffer,
+//       "matrimony/profile-photos",
+//     );
+
+//     const oldPublicId = currentUser.profilePhotoPublicId;
+
+//     currentUser.profilePhoto = result.secure_url;
+
+//     currentUser.profilePhotoPublicId = result.public_id;
+
+//     await currentUser.save();
+
+//     if (oldPublicId) {
+//       await deleteFromCloudinary(oldPublicId);
+//     }
+
+//     const updatedUser = await User.findById(req.userId)
+//       .select("-password")
+//       .lean();
+
+//     return res.json({
+//       message: "Profile photo uploaded successfully.",
+
+//       profilePhoto: result.secure_url,
+
+//       user: updatedUser,
+//     });
+//   } catch (error) {
+//     console.error("PHOTO UPLOAD ERROR:", error);
+
+//     return res.status(500).json({
+//       message: error.message || "Failed to upload profile photo",
+//     });
+//   }
+// });
+
 router.put("/me", auth, async (req, res) => {
   try {
     const {
@@ -248,7 +436,10 @@ router.put("/me", auth, async (req, res) => {
       });
     }
 
-    if (education && !EDUCATION_OPTIONS.includes(education)) {
+    if (
+      education &&
+      !EDUCATION_OPTIONS.includes(education)
+    ) {
       return res.status(400).json({
         message: "Invalid education selected.",
       });
@@ -259,18 +450,34 @@ router.put("/me", auth, async (req, res) => {
     if (Array.isArray(interests)) {
       interestsArray = [
         ...new Set(
-          interests.map((item) => String(item).trim()).filter(Boolean),
-        ),
-      ];
-    } else if (typeof interests === "string") {
-      interestsArray = [
-        ...new Set(
           interests
-            .split(",")
-            .map((item) => item.trim())
+            .map((item) => String(item).trim())
             .filter(Boolean),
         ),
       ];
+    } else if (typeof interests === "string") {
+      try {
+        const parsedInterests = JSON.parse(interests);
+
+        if (Array.isArray(parsedInterests)) {
+          interestsArray = [
+            ...new Set(
+              parsedInterests
+                .map((item) => String(item).trim())
+                .filter(Boolean),
+            ),
+          ];
+        }
+      } catch {
+        interestsArray = [
+          ...new Set(
+            interests
+              .split(",")
+              .map((item) => item.trim())
+              .filter(Boolean),
+          ),
+        ];
+      }
     }
 
     const updates = {
@@ -301,12 +508,17 @@ router.put("/me", auth, async (req, res) => {
       profileCompleted: true,
     };
 
-    const updatedUser = await User.findByIdAndUpdate(req.userId, updates, {
-      new: true,
-      runValidators: true,
-    })
-      .select("-password")
-      .lean();
+    const updatedUser =
+      await User.findByIdAndUpdate(
+        req.userId,
+        updates,
+        {
+          new: true,
+          runValidators: true,
+        },
+      )
+        .select("-password")
+        .lean();
 
     if (!updatedUser) {
       return res.status(404).json({
@@ -316,70 +528,94 @@ router.put("/me", auth, async (req, res) => {
 
     return res.json({
       message: "Profile updated successfully.",
-
       user: updatedUser,
     });
   } catch (error) {
-    console.error("PROFILE UPDATE ERROR:", error);
-
-    return res.status(400).json({
-      message: error.message || "Failed to update profile",
-    });
-  }
-});
-
-router.post("/me/photo", auth, upload.single("photo"), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({
-        message: "No photo file provided.",
-      });
-    }
-
-    const currentUser = await User.findById(req.userId);
-
-    if (!currentUser) {
-      return res.status(404).json({
-        message: "User not found.",
-      });
-    }
-
-    const result = await uploadToCloudinary(
-      req.file.buffer,
-      "matrimony/profile-photos",
+    console.error(
+      "PROFILE UPDATE ERROR:",
+      error,
     );
 
-    const oldPublicId = currentUser.profilePhotoPublicId;
-
-    currentUser.profilePhoto = result.secure_url;
-
-    currentUser.profilePhotoPublicId = result.public_id;
-
-    await currentUser.save();
-
-    if (oldPublicId) {
-      await deleteFromCloudinary(oldPublicId);
-    }
-
-    const updatedUser = await User.findById(req.userId)
-      .select("-password")
-      .lean();
-
-    return res.json({
-      message: "Profile photo uploaded successfully.",
-
-      profilePhoto: result.secure_url,
-
-      user: updatedUser,
-    });
-  } catch (error) {
-    console.error("PHOTO UPLOAD ERROR:", error);
-
-    return res.status(500).json({
-      message: error.message || "Failed to upload profile photo",
+    return res.status(400).json({
+      message:
+        error.message ||
+        "Failed to update profile",
     });
   }
 });
+
+router.post(
+  "/me/photo",
+  auth,
+  upload.single("photo"),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({
+          message: "No photo file provided.",
+        });
+      }
+
+      const currentUser =
+        await User.findById(req.userId);
+
+      if (!currentUser) {
+        return res.status(404).json({
+          message: "User not found.",
+        });
+      }
+
+      const result =
+        await uploadToCloudinary(
+          req.file.buffer,
+          "matrimony/profile-photos",
+        );
+
+      const oldPublicId =
+        currentUser.profilePhotoPublicId;
+
+      currentUser.profilePhoto =
+        result.secure_url;
+
+      currentUser.profilePhotoPublicId =
+        result.public_id;
+
+      await currentUser.save();
+
+      if (oldPublicId) {
+        await deleteFromCloudinary(
+          oldPublicId,
+        );
+      }
+
+      const updatedUser =
+        await User.findById(req.userId)
+          .select("-password")
+          .lean();
+
+      return res.json({
+        message:
+          "Profile photo uploaded successfully.",
+
+        profilePhoto:
+          result.secure_url,
+
+        user: updatedUser,
+      });
+    } catch (error) {
+      console.error(
+        "PHOTO UPLOAD ERROR:",
+        error,
+      );
+
+      return res.status(500).json({
+        message:
+          error.message ||
+          "Failed to upload profile photo",
+      });
+    }
+  },
+);
 
 router.delete("/me/photo", auth, async (req, res) => {
   try {

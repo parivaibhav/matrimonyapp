@@ -1,6 +1,5 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   Image,
   KeyboardAvoidingView,
@@ -21,11 +20,160 @@ import { api } from "../api";
 import { colors, shadow } from "../theme";
 import { useResponsiveLayout } from "../utils/responsive";
 
+const TABS = [
+  {
+    key: "basic",
+    label: "Basic",
+    icon: "person-outline",
+  },
+  {
+    key: "education",
+    label: "Career",
+    icon: "school-outline",
+  },
+  {
+    key: "family",
+    label: "Family",
+    icon: "people-outline",
+  },
+  {
+    key: "about",
+    label: "About",
+    icon: "heart-outline",
+  },
+];
+
+const EDUCATION_OPTIONS = [
+  "10th",
+  "12th",
+  "Diploma",
+  "ITI",
+  "B.A.",
+  "B.Com.",
+  "B.Sc.",
+  "BBA",
+  "BCA",
+  "B.Tech",
+  "B.E.",
+  "MBBS",
+  "BDS",
+  "LLB",
+  "B.Pharm",
+  "M.A.",
+  "M.Com.",
+  "M.Sc.",
+  "MBA",
+  "MCA",
+  "M.Tech",
+  "M.E.",
+  "MD",
+  "MS",
+  "LLM",
+  "PhD",
+  "Other",
+];
+
+const INTEREST_GROUPS = [
+  {
+    title: "Lifestyle",
+    icon: "sparkles-outline",
+    items: [
+      "Travel",
+      "Fitness",
+      "Cooking",
+      "Photography",
+      "Fashion",
+      "Shopping",
+      "Nature",
+      "Yoga",
+    ],
+  },
+  {
+    title: "Creative",
+    icon: "color-palette-outline",
+    items: [
+      "Music",
+      "Singing",
+      "Dancing",
+      "Reading",
+      "Writing",
+      "Painting",
+      "Movies",
+      "Art",
+    ],
+  },
+  {
+    title: "Sports",
+    icon: "football-outline",
+    items: [
+      "Cricket",
+      "Football",
+      "Badminton",
+      "Tennis",
+      "Running",
+      "Cycling",
+      "Swimming",
+      "Gym",
+    ],
+  },
+  {
+    title: "Personality",
+    icon: "people-outline",
+    items: [
+      "Family",
+      "Spirituality",
+      "Social Work",
+      "Learning",
+      "Technology",
+      "Business",
+      "Volunteering",
+      "Meditation",
+    ],
+  },
+];
+
+function calculateAge(dob) {
+  if (!dob) return "";
+
+  const birthDate = new Date(dob);
+
+  if (Number.isNaN(birthDate.getTime())) {
+    return "";
+  }
+
+  const today = new Date();
+
+  let age = today.getFullYear() - birthDate.getFullYear();
+
+  const monthDifference = today.getMonth() - birthDate.getMonth();
+
+  if (
+    monthDifference < 0 ||
+    (monthDifference === 0 && today.getDate() < birthDate.getDate())
+  ) {
+    age--;
+  }
+
+  return age >= 0 ? age : "";
+}
+
+function formatDateForInput(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
 export default function CompleteProfileScreen({ navigation }) {
   const { isSmallPhone, isTablet } = useResponsiveLayout();
 
   const [loading, setLoading] = useState(false);
   const [photo, setPhoto] = useState(null);
+
+  const [activeTab, setActiveTab] = useState("basic");
+
+  const [showEducationOptions, setShowEducationOptions] = useState(false);
 
   const [form, setForm] = useState({
     fullName: "",
@@ -36,15 +184,13 @@ export default function CompleteProfileScreen({ navigation }) {
     occupation: "",
     height: "",
     weight: "",
-    interests: "",
     fatherName: "",
     fatherMobile: "",
     motherName: "",
+    interests: [],
   });
 
-  /* =========================================================
-     SET FIELD
-  ========================================================= */
+  const calculatedAge = useMemo(() => calculateAge(form.dob), [form.dob]);
 
   function setField(key, value) {
     setForm((previous) => ({
@@ -54,7 +200,7 @@ export default function CompleteProfileScreen({ navigation }) {
   }
 
   /* =========================================================
-     PICK PHOTO
+     PHOTO
   ========================================================= */
 
   async function choosePhoto() {
@@ -77,78 +223,58 @@ export default function CompleteProfileScreen({ navigation }) {
         quality: 0.85,
       });
 
-      if (!result.canceled && result.assets?.length > 0) {
+      if (!result.canceled && result.assets?.length) {
         setPhoto(result.assets[0]);
       }
     } catch (error) {
       console.log("IMAGE PICKER ERROR:", error);
 
-      Alert.alert("Photo error", "Unable to select your profile photo.");
+      Alert.alert("Photo error", "Unable to select the profile photo.");
     }
   }
 
   /* =========================================================
-     DOB VALIDATION
+     DOB
   ========================================================= */
 
-  function isValidDob(value) {
-    const parts = value.split("-");
+  function changeDob(value) {
+    const cleanValue = value.replace(/[^\d-]/g, "");
 
-    if (parts.length !== 3) {
-      return false;
-    }
-
-    const year = Number(parts[0]);
-    const month = Number(parts[1]);
-    const day = Number(parts[2]);
-
-    if (
-      !Number.isInteger(year) ||
-      !Number.isInteger(month) ||
-      !Number.isInteger(day)
-    ) {
-      return false;
-    }
-
-    if (year < 1900 || month < 1 || month > 12 || day < 1 || day > 31) {
-      return false;
-    }
-
-    const date = new Date(year, month - 1, day);
-
-    return (
-      date.getFullYear() === year &&
-      date.getMonth() === month - 1 &&
-      date.getDate() === day
-    );
+    setField("dob", cleanValue);
   }
 
-  /* =========================================================
-     CALCULATE AGE
-  ========================================================= */
-
-  function calculateAge(dob) {
-    if (!isValidDob(dob)) {
-      return null;
-    }
-
-    const [year, month, day] = dob.split("-").map(Number);
-
-    const birthDate = new Date(year, month - 1, day);
+  function setTodayBasedDob(age) {
     const today = new Date();
 
-    let age = today.getFullYear() - birthDate.getFullYear();
+    const date = new Date(
+      today.getFullYear() - age,
+      today.getMonth(),
+      today.getDate(),
+    );
 
-    const monthDifference = today.getMonth() - birthDate.getMonth();
+    setField("dob", formatDateForInput(date));
+  }
 
-    if (
-      monthDifference < 0 ||
-      (monthDifference === 0 && today.getDate() < birthDate.getDate())
-    ) {
-      age--;
-    }
+  /* =========================================================
+     INTERESTS
+  ========================================================= */
 
-    return age;
+  function toggleInterest(interest) {
+    setForm((previous) => {
+      const exists = previous.interests.includes(interest);
+
+      if (exists) {
+        return {
+          ...previous,
+          interests: previous.interests.filter((item) => item !== interest),
+        };
+      }
+
+      return {
+        ...previous,
+        interests: [...previous.interests, interest],
+      };
+    });
   }
 
   /* =========================================================
@@ -156,42 +282,72 @@ export default function CompleteProfileScreen({ navigation }) {
   ========================================================= */
 
   function validateForm() {
-    const fullName = form.fullName.trim();
-    const dob = form.dob.trim();
-    const location = form.location.trim();
+    if (!form.fullName.trim()) {
+      setActiveTab("basic");
 
-    if (!fullName) {
       Alert.alert("Name required", "Please enter your full name.");
+
       return false;
     }
 
-    if (!form.gender) {
-      Alert.alert("Gender required", "Please select your gender.");
-      return false;
-    }
+    if (!form.dob.trim()) {
+      setActiveTab("basic");
 
-    if (!dob) {
       Alert.alert("Date of birth required", "Please enter your date of birth.");
+
       return false;
     }
 
-    if (!isValidDob(dob)) {
+    const parsedDob = new Date(form.dob);
+
+    if (Number.isNaN(parsedDob.getTime())) {
+      setActiveTab("basic");
+
       Alert.alert(
         "Invalid date",
         "Please enter your date of birth in YYYY-MM-DD format.",
       );
+
       return false;
     }
 
-    const age = calculateAge(dob);
+    if (parsedDob > new Date()) {
+      setActiveTab("basic");
 
-    if (age === null || age < 18) {
-      Alert.alert("Invalid age", "You must be at least 18 years old.");
+      Alert.alert("Invalid date", "Date of birth cannot be in the future.");
+
       return false;
     }
 
-    if (!location) {
+    if (!calculatedAge || calculatedAge < 18) {
+      setActiveTab("basic");
+
+      Alert.alert("Age requirement", "You must be at least 18 years old.");
+
+      return false;
+    }
+
+    if (!form.gender) {
+      setActiveTab("basic");
+
+      Alert.alert("Gender required", "Please select your gender.");
+
+      return false;
+    }
+
+    if (!form.location.trim()) {
+      setActiveTab("basic");
+
       Alert.alert("Location required", "Please enter your city or location.");
+
+      return false;
+    }
+
+    if (!form.education.trim()) {
+      setActiveTab("education");
+
+      Alert.alert("Education required", "Please select your education.");
+
       return false;
     }
 
@@ -199,7 +355,7 @@ export default function CompleteProfileScreen({ navigation }) {
   }
 
   /* =========================================================
-     COMPLETE PROFILE
+     SAVE PROFILE
   ========================================================= */
 
   async function completeProfile() {
@@ -223,84 +379,94 @@ export default function CompleteProfileScreen({ navigation }) {
         return;
       }
 
-      const interests = form.interests
-        .split(",")
-        .map((item) => item.trim())
-        .filter(Boolean);
+      const cleanInterests = [
+        ...new Set(
+          form.interests.map((item) => String(item).trim()).filter(Boolean),
+        ),
+      ];
 
-      const body = new FormData();
+      const body = {
+        fullName: form.fullName.trim(),
 
-      /* =====================================================
-         USER SCHEMA FIELDS
-      ===================================================== */
+        dob: form.dob.trim(),
 
-      body.append("fullName", form.fullName.trim());
-
-      body.append("dob", form.dob.trim());
-
-      body.append("gender", form.gender);
-
-      body.append("location", form.location.trim());
-
-      body.append("education", form.education.trim());
-
-      body.append("occupation", form.occupation.trim());
-
-      body.append("height", form.height.trim());
-
-      body.append("weight", form.weight.trim());
-
-      body.append("interests", JSON.stringify(interests));
-
-      body.append("fatherName", form.fatherName.trim());
-
-      body.append("fatherMobile", form.fatherMobile.trim());
-
-      body.append("motherName", form.motherName.trim());
-
-      /* =====================================================
-         PROFILE PHOTO
-      ===================================================== */
-
-      if (photo?.uri) {
-        const filename =
-          photo.fileName || photo.uri.split("/").pop() || "profile.jpg";
-
-        const type = photo.mimeType || "image/jpeg";
-
-        body.append("profilePhoto", {
-          uri: photo.uri,
-          name: filename,
-          type,
-        });
-      }
-
-      console.log("COMPLETE PROFILE REQUEST", {
-        fullName: form.fullName,
-        dob: form.dob,
         gender: form.gender,
-        location: form.location,
-        education: form.education,
-        occupation: form.occupation,
-        height: form.height,
-        weight: form.weight,
-        interests,
-        fatherName: form.fatherName,
-        fatherMobile: form.fatherMobile,
-        motherName: form.motherName,
-        hasPhoto: Boolean(photo?.uri),
-      });
 
-      const response = await api.put("/profile/complete", body, {
+        location: form.location.trim(),
+
+        education: form.education.trim(),
+
+        occupation: form.occupation.trim(),
+
+        height: form.height.trim(),
+
+        weight: form.weight.trim(),
+
+        fatherName: form.fatherName.trim(),
+
+        fatherMobile: form.fatherMobile.trim(),
+
+        motherName: form.motherName.trim(),
+
+        interests: cleanInterests,
+      };
+
+      console.log("PROFILE UPDATE BODY:", body);
+
+      const response = await api.put("/profile/me", body, {
         headers: {
           Authorization: `Bearer ${token}`,
-          "Content-Type": "multipart/form-data",
+          "Content-Type": "application/json",
         },
       });
 
-      console.log("COMPLETE PROFILE RESPONSE:", response.data);
+      console.log("PROFILE UPDATE RESPONSE:", response.data);
 
-      const updatedUser = response.data?.user;
+      let updatedUser = response.data?.user;
+
+      /* =====================================================
+         UPLOAD PHOTO SEPARATELY
+      ===================================================== */
+
+      if (photo?.uri) {
+        try {
+          const filename =
+            photo.fileName || photo.uri.split("/").pop() || "profile.jpg";
+
+          const type = photo.mimeType || "image/jpeg";
+
+          const photoBody = new FormData();
+
+          photoBody.append("photo", {
+            uri: photo.uri,
+            name: filename,
+            type,
+          });
+
+          const photoResponse = await api.post("/profile/me/photo", photoBody, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "multipart/form-data",
+            },
+          });
+
+          console.log("PHOTO UPLOAD RESPONSE:", photoResponse.data);
+
+          if (photoResponse.data?.user) {
+            updatedUser = photoResponse.data.user;
+          }
+        } catch (photoError) {
+          console.log(
+            "PHOTO UPLOAD ERROR:",
+            photoError?.response?.data || photoError?.message,
+          );
+
+          Alert.alert(
+            "Profile saved",
+            "Your profile was saved, but the profile photo could not be uploaded.",
+          );
+        }
+      }
 
       if (updatedUser) {
         await AsyncStorage.setItem("user", JSON.stringify(updatedUser));
@@ -321,15 +487,15 @@ export default function CompleteProfileScreen({ navigation }) {
     } catch (error) {
       console.log("COMPLETE PROFILE ERROR:", error);
 
-      console.log("COMPLETE PROFILE RESPONSE:", error.response?.data);
+      console.log("COMPLETE PROFILE RESPONSE:", error?.response?.data);
 
       let message = "Unable to complete your profile.";
 
-      if (error.response?.data?.message) {
+      if (error?.response?.data?.message) {
         message = error.response.data.message;
-      } else if (error.message === "Network Error") {
+      } else if (error?.message === "Network Error") {
         message = "Cannot connect to the backend server.";
-      } else if (error.message) {
+      } else if (error?.message) {
         message = error.message;
       }
 
@@ -349,7 +515,7 @@ export default function CompleteProfileScreen({ navigation }) {
     placeholder,
     keyboardType = "default",
     multiline = false,
-    autoCapitalize = "sentences",
+    maxLength,
   }) {
     return (
       <View style={styles.inputGroup}>
@@ -362,11 +528,139 @@ export default function CompleteProfileScreen({ navigation }) {
           value={form[field]}
           onChangeText={(value) => setField(field, value)}
           keyboardType={keyboardType}
-          autoCapitalize={autoCapitalize}
           editable={!loading}
           multiline={multiline}
+          maxLength={maxLength}
           textAlignVertical={multiline ? "top" : "center"}
         />
+      </View>
+    );
+  }
+
+  /* =========================================================
+     HEADER
+  ========================================================= */
+
+  function renderHeader() {
+    return (
+      <>
+        <View style={styles.header}>
+          <View style={styles.headerIcon}>
+            <Ionicons name="person-outline" size={27} color={colors.primary} />
+          </View>
+
+          <Text style={[styles.title, isSmallPhone && styles.smallTitle]}>
+            Complete your profile
+          </Text>
+
+          <Text style={styles.subtitle}>
+            Add a few details to help others know you better.
+          </Text>
+        </View>
+
+        {renderPhoto()}
+
+        {renderTabs()}
+      </>
+    );
+  }
+
+  /* =========================================================
+     PHOTO
+  ========================================================= */
+
+  function renderPhoto() {
+    return (
+      <View style={styles.photoSection}>
+        <Pressable
+          style={[styles.photoButton, photo?.uri && styles.photoButtonFilled]}
+          onPress={choosePhoto}
+          disabled={loading}
+        >
+          {photo?.uri ? (
+            <Image source={{ uri: photo.uri }} style={styles.profileImage} />
+          ) : (
+            <View style={styles.photoPlaceholder}>
+              <View style={styles.photoIconCircle}>
+                <Ionicons
+                  name="camera-outline"
+                  size={29}
+                  color={colors.primary}
+                />
+              </View>
+
+              <Text style={styles.photoTitle}>Add photo</Text>
+
+              <Text style={styles.photoSubtitle}>Clear profile photo</Text>
+            </View>
+          )}
+
+          <View style={styles.cameraBadge}>
+            <Ionicons name="camera" size={17} color="#fff" />
+          </View>
+        </Pressable>
+
+        <Text style={styles.photoHint}>
+          Your profile photo helps people recognize you
+        </Text>
+      </View>
+    );
+  }
+
+  /* =========================================================
+     TABS
+  ========================================================= */
+
+  function renderTabs() {
+    return (
+      <View style={styles.tabContainer}>
+        {TABS.map((tab) => {
+          const selected = activeTab === tab.key;
+
+          return (
+            <Pressable
+              key={tab.key}
+              style={[styles.tab, selected && styles.tabSelected]}
+              onPress={() => {
+                setActiveTab(tab.key);
+                setShowEducationOptions(false);
+              }}
+              disabled={loading}
+            >
+              <Ionicons
+                name={tab.icon}
+                size={18}
+                color={selected ? colors.primary : colors.muted}
+              />
+
+              <Text
+                style={[styles.tabText, selected && styles.tabTextSelected]}
+              >
+                {tab.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    );
+  }
+
+  /* =========================================================
+     SECTION HEADER
+  ========================================================= */
+
+  function renderSectionHeader(icon, title, subtitle) {
+    return (
+      <View style={styles.sectionHeader}>
+        <View style={styles.sectionIcon}>
+          <Ionicons name={icon} size={19} color={colors.primary} />
+        </View>
+
+        <View style={styles.sectionHeaderText}>
+          <Text style={styles.sectionTitle}>{title}</Text>
+
+          <Text style={styles.sectionSubtitle}>{subtitle}</Text>
+        </View>
       </View>
     );
   }
@@ -388,11 +682,11 @@ export default function CompleteProfileScreen({ navigation }) {
               <Pressable
                 key={gender}
                 onPress={() => setField("gender", gender)}
-                disabled={loading}
                 style={[
                   styles.genderButton,
                   selected && styles.genderButtonSelected,
                 ]}
+                disabled={loading}
               >
                 <Ionicons
                   name={gender === "Male" ? "male-outline" : "female-outline"}
@@ -408,6 +702,14 @@ export default function CompleteProfileScreen({ navigation }) {
                 >
                   {gender}
                 </Text>
+
+                {selected && (
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={18}
+                    color={colors.primary}
+                  />
+                )}
               </Pressable>
             );
           })}
@@ -417,74 +719,464 @@ export default function CompleteProfileScreen({ navigation }) {
   }
 
   /* =========================================================
-     PHOTO
+     BASIC TAB
   ========================================================= */
 
-  function renderPhoto() {
+  function renderBasicTab() {
     return (
-      <View style={styles.photoSection}>
-        <Pressable
-          style={styles.photoButton}
-          onPress={choosePhoto}
-          disabled={loading}
-        >
-          {photo?.uri ? (
-            <Image
-              source={{
-                uri: photo.uri,
-              }}
-              style={styles.profileImage}
-            />
-          ) : (
-            <View style={styles.photoPlaceholder}>
-              <View style={styles.photoIconCircle}>
+      <View>
+        {renderSectionHeader(
+          "person-outline",
+          "Personal information",
+          "Your basic profile details",
+        )}
+
+        {renderInput({
+          label: "Full name",
+          field: "fullName",
+          placeholder: "Enter your full name",
+        })}
+
+        {renderGender()}
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Date of birth</Text>
+
+          <TextInput
+            style={styles.input}
+            placeholder="YYYY-MM-DD"
+            placeholderTextColor={colors.muted}
+            value={form.dob}
+            onChangeText={changeDob}
+            keyboardType="numbers-and-punctuation"
+            editable={!loading}
+            maxLength={10}
+          />
+
+          <Text style={styles.inputHint}>Example: 1998-05-24</Text>
+
+          {calculatedAge ? (
+            <View style={styles.agePreview}>
+              <View style={styles.ageIcon}>
                 <Ionicons
-                  name="camera-outline"
-                  size={30}
+                  name="calendar-outline"
+                  size={17}
                   color={colors.primary}
                 />
               </View>
 
-              <Text style={styles.photoTitle}>Add profile photo</Text>
-
-              <Text style={styles.photoSubtitle}>
-                Choose a clear photo of yourself
+              <Text style={styles.ageText}>
+                You are {calculatedAge} years old
               </Text>
             </View>
-          )}
+          ) : null}
 
-          {photo?.uri && (
-            <View style={styles.cameraBadge}>
-              <Ionicons name="camera" size={17} color="#fff" />
-            </View>
-          )}
+          <View style={styles.ageQuickRow}>
+            {[18, 21, 25, 30].map((age) => (
+              <Pressable
+                key={age}
+                style={styles.ageQuickButton}
+                onPress={() => setTodayBasedDob(age)}
+              >
+                <Text style={styles.ageQuickText}>{age} yrs</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+
+        {renderInput({
+          label: "Location",
+          field: "location",
+          placeholder: "e.g. Ahmedabad, Gujarat",
+        })}
+
+        <View style={styles.infoCard}>
+          <Ionicons
+            name="information-circle-outline"
+            size={19}
+            color={colors.primary}
+          />
+
+          <Text style={styles.infoText}>
+            Age is calculated automatically from your date of birth. You don't
+            need to enter your age separately.
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  /* =========================================================
+     EDUCATION
+  ========================================================= */
+
+  function renderEducationDropdown() {
+    return (
+      <View style={styles.inputGroup}>
+        <Text style={styles.label}>Education</Text>
+
+        <Pressable
+          style={[
+            styles.dropdown,
+            showEducationOptions && styles.dropdownActive,
+          ]}
+          onPress={() => setShowEducationOptions((previous) => !previous)}
+          disabled={loading}
+        >
+          <View style={styles.dropdownLeft}>
+            <Ionicons name="school-outline" size={19} color={colors.primary} />
+
+            <Text
+              style={[
+                styles.dropdownText,
+                !form.education && styles.placeholderText,
+              ]}
+            >
+              {form.education || "Select education"}
+            </Text>
+          </View>
+
+          <Ionicons
+            name={showEducationOptions ? "chevron-up" : "chevron-down"}
+            size={20}
+            color={colors.muted}
+          />
         </Pressable>
 
-        {photo?.uri && (
-          <Text style={styles.photoChangeText}>Tap photo to change</Text>
+        {showEducationOptions && (
+          <View style={styles.optionsContainer}>
+            <ScrollView
+              nestedScrollEnabled
+              style={styles.optionsScroll}
+              showsVerticalScrollIndicator={false}
+            >
+              {EDUCATION_OPTIONS.map((option) => {
+                const selected = form.education === option;
+
+                return (
+                  <Pressable
+                    key={option}
+                    style={[styles.option, selected && styles.optionSelected]}
+                    onPress={() => {
+                      setField("education", option);
+                      setShowEducationOptions(false);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.optionText,
+                        selected && styles.optionTextSelected,
+                      ]}
+                    >
+                      {option}
+                    </Text>
+
+                    {selected && (
+                      <Ionicons
+                        name="checkmark"
+                        size={19}
+                        color={colors.primary}
+                      />
+                    )}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
         )}
       </View>
     );
   }
 
   /* =========================================================
-     SECTION HEADER
+     CAREER TAB
   ========================================================= */
 
-  function renderSectionHeader(icon, title, subtitle) {
+  function renderEducationTab() {
     return (
-      <View style={styles.sectionHeader}>
-        <View style={styles.sectionIcon}>
-          <Ionicons name={icon} size={18} color={colors.primary} />
-        </View>
+      <View>
+        {renderSectionHeader(
+          "school-outline",
+          "Education & career",
+          "Tell people about your professional background",
+        )}
 
-        <View style={styles.sectionHeaderText}>
-          <Text style={styles.sectionTitle}>{title}</Text>
+        {renderEducationDropdown()}
 
-          <Text style={styles.sectionSubtitle}>{subtitle}</Text>
+        {renderInput({
+          label: "Occupation",
+          field: "occupation",
+          placeholder: "e.g. Software Engineer, Doctor, Business",
+        })}
+
+        {renderInput({
+          label: "Height",
+          field: "height",
+          placeholder: `e.g. 5'8" or 173 cm`,
+        })}
+
+        {renderInput({
+          label: "Weight",
+          field: "weight",
+          placeholder: "e.g. 65 kg",
+          keyboardType: "decimal-pad",
+        })}
+
+        <View style={styles.infoCard}>
+          <Ionicons name="briefcase-outline" size={19} color={colors.primary} />
+
+          <Text style={styles.infoText}>
+            Keep your education and occupation accurate so your profile gives a
+            clear picture of your background.
+          </Text>
         </View>
       </View>
     );
+  }
+
+  /* =========================================================
+     FAMILY TAB
+  ========================================================= */
+
+  function renderFamilyTab() {
+    return (
+      <View>
+        {renderSectionHeader(
+          "people-outline",
+          "Family information",
+          "A little information about your family",
+        )}
+
+        {renderInput({
+          label: "Father's name",
+          field: "fatherName",
+          placeholder: "Enter father's name",
+        })}
+
+        {renderInput({
+          label: "Father's mobile",
+          field: "fatherMobile",
+          placeholder: "Enter father's mobile number",
+          keyboardType: "phone-pad",
+        })}
+
+        {renderInput({
+          label: "Mother's name",
+          field: "motherName",
+          placeholder: "Enter mother's name",
+        })}
+
+        <View style={styles.familyInfoCard}>
+          <View style={styles.familyInfoIcon}>
+            <Ionicons name="home-outline" size={20} color={colors.primary} />
+          </View>
+
+          <View style={styles.familyInfoContent}>
+            <Text style={styles.familyInfoTitle}>Family details</Text>
+
+            <Text style={styles.familyInfoText}>
+              Family information helps create a more complete matrimonial
+              profile.
+            </Text>
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  /* =========================================================
+     INTEREST CHIP
+  ========================================================= */
+
+  function renderInterestChip(interest) {
+    const selected = form.interests.includes(interest);
+
+    return (
+      <Pressable
+        key={interest}
+        style={[styles.interestChip, selected && styles.interestChipSelected]}
+        onPress={() => toggleInterest(interest)}
+        disabled={loading}
+      >
+        <Text
+          style={[
+            styles.interestChipText,
+            selected && styles.interestChipTextSelected,
+          ]}
+        >
+          {interest}
+        </Text>
+
+        {selected && (
+          <Ionicons name="checkmark-circle" size={16} color={colors.primary} />
+        )}
+      </Pressable>
+    );
+  }
+
+  /* =========================================================
+     ABOUT TAB
+  ========================================================= */
+
+  function renderAboutTab() {
+    return (
+      <View>
+        {renderSectionHeader(
+          "heart-outline",
+          "About you",
+          "Show your personality and interests",
+        )}
+
+        <View style={styles.bioCard}>
+          <View style={styles.bioIcon}>
+            <Ionicons
+              name="chatbubble-ellipses-outline"
+              size={21}
+              color={colors.primary}
+            />
+          </View>
+
+          <View style={styles.bioCardContent}>
+            <Text style={styles.bioCardTitle}>Your personality matters</Text>
+
+            <Text style={styles.bioCardText}>
+              Select the things you genuinely enjoy. This makes it easier for
+              people with similar interests to connect with you.
+            </Text>
+          </View>
+        </View>
+
+        {INTEREST_GROUPS.map((group) => (
+          <View key={group.title} style={styles.interestGroup}>
+            <View style={styles.interestGroupHeader}>
+              <View style={styles.interestGroupIcon}>
+                <Ionicons name={group.icon} size={17} color={colors.primary} />
+              </View>
+
+              <Text style={styles.interestGroupTitle}>{group.title}</Text>
+            </View>
+
+            <View style={styles.chipsWrap}>
+              {group.items.map(renderInterestChip)}
+            </View>
+          </View>
+        ))}
+
+        <View style={styles.selectedInterestCard}>
+          <View style={styles.selectedInterestHeader}>
+            <Text style={styles.selectedInterestTitle}>Selected interests</Text>
+
+            <Text style={styles.selectedInterestCount}>
+              {form.interests.length}
+            </Text>
+          </View>
+
+          {form.interests.length > 0 ? (
+            <View style={styles.selectedList}>
+              {form.interests.map((interest) => (
+                <View key={interest} style={styles.selectedItem}>
+                  <Text style={styles.selectedItemText}>{interest}</Text>
+
+                  <Pressable onPress={() => toggleInterest(interest)}>
+                    <Ionicons
+                      name="close-circle"
+                      size={18}
+                      color={colors.muted}
+                    />
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <Text style={styles.noInterestText}>
+              No interests selected yet.
+            </Text>
+          )}
+        </View>
+      </View>
+    );
+  }
+
+  /* =========================================================
+     TAB CONTENT
+  ========================================================= */
+
+  function renderTabContent() {
+    if (activeTab === "basic") {
+      return renderBasicTab();
+    }
+
+    if (activeTab === "education") {
+      return renderEducationTab();
+    }
+
+    if (activeTab === "family") {
+      return renderFamilyTab();
+    }
+
+    return renderAboutTab();
+  }
+
+  /* =========================================================
+     NAVIGATION BUTTONS
+  ========================================================= */
+
+  function getCurrentTabIndex() {
+    return TABS.findIndex((tab) => tab.key === activeTab);
+  }
+
+  function goPrevious() {
+    const index = getCurrentTabIndex();
+
+    if (index <= 0) {
+      return;
+    }
+
+    setShowEducationOptions(false);
+
+    setActiveTab(TABS[index - 1].key);
+  }
+
+  function goNext() {
+    const index = getCurrentTabIndex();
+
+    if (index < 0 || index >= TABS.length - 1) {
+      return;
+    }
+
+    if (activeTab === "basic") {
+      if (!form.fullName.trim()) {
+        Alert.alert("Name required", "Please enter your full name.");
+        return;
+      }
+
+      if (!form.dob.trim()) {
+        Alert.alert(
+          "Date of birth required",
+          "Please enter your date of birth.",
+        );
+        return;
+      }
+
+      if (!calculatedAge || calculatedAge < 18) {
+        Alert.alert("Age requirement", "You must be at least 18 years old.");
+        return;
+      }
+
+      if (!form.location.trim()) {
+        Alert.alert("Location required", "Please enter your city or location.");
+        return;
+      }
+    }
+
+    if (activeTab === "education" && !form.education.trim()) {
+      Alert.alert("Education required", "Please select your education.");
+      return;
+    }
+
+    setShowEducationOptions(false);
+
+    setActiveTab(TABS[index + 1].key);
   }
 
   /* =========================================================
@@ -507,188 +1199,90 @@ export default function CompleteProfileScreen({ navigation }) {
           showsVerticalScrollIndicator={false}
         >
           <View style={[styles.card, isTablet && styles.tabletCard]}>
-            {/* HEADER */}
+            {renderHeader()}
 
-            <View style={styles.header}>
-              <View style={styles.headerIcon}>
-                <Ionicons
-                  name="person-outline"
-                  size={27}
-                  color={colors.primary}
+            <View style={styles.contentCard}>{renderTabContent()}</View>
+
+            {/* =================================================
+                TAB NAVIGATION
+            ================================================= */}
+
+            <View style={styles.navigationRow}>
+              {getCurrentTabIndex() > 0 ? (
+                <Pressable
+                  style={styles.previousButton}
+                  onPress={goPrevious}
+                  disabled={loading}
+                >
+                  <Ionicons name="arrow-back" size={19} color={colors.text} />
+
+                  <Text style={styles.previousButtonText}>Back</Text>
+                </Pressable>
+              ) : (
+                <View style={styles.navigationPlaceholder} />
+              )}
+
+              {getCurrentTabIndex() < TABS.length - 1 ? (
+                <Pressable
+                  style={[styles.nextButton, loading && styles.buttonDisabled]}
+                  onPress={goNext}
+                  disabled={loading}
+                >
+                  <Text style={styles.nextButtonText}>Continue</Text>
+
+                  <Ionicons name="arrow-forward" size={19} color="#fff" />
+                </Pressable>
+              ) : (
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.completeButton,
+                    loading && styles.buttonDisabled,
+                    pressed && !loading && styles.buttonPressed,
+                  ]}
+                  onPress={completeProfile}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <>
+                      <Ionicons name="sync-outline" size={20} color="#fff" />
+
+                      <Text style={styles.completeButtonText}>Saving...</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.completeButtonText}>
+                        Complete Profile
+                      </Text>
+
+                      <Ionicons
+                        name="checkmark-circle-outline"
+                        size={20}
+                        color="#fff"
+                      />
+                    </>
+                  )}
+                </Pressable>
+              )}
+            </View>
+
+            <View style={styles.progressContainer}>
+              <View style={styles.progressTrack}>
+                <View
+                  style={[
+                    styles.progressFill,
+                    {
+                      width: `${
+                        ((getCurrentTabIndex() + 1) / TABS.length) * 100
+                      }%`,
+                    },
+                  ]}
                 />
               </View>
 
-              <Text style={[styles.title, isSmallPhone && styles.smallTitle]}>
-                Complete your profile
-              </Text>
-
-              <Text style={styles.subtitle}>
-                Add a few details to help people discover your profile.
+              <Text style={styles.progressText}>
+                Step {getCurrentTabIndex() + 1} of {TABS.length}
               </Text>
             </View>
-
-            {/* PHOTO */}
-
-            {renderPhoto()}
-
-            {/* BASIC INFORMATION */}
-
-            {renderSectionHeader(
-              "person-outline",
-              "Basic information",
-              "Your personal details",
-            )}
-
-            {renderInput({
-              label: "Full name",
-              field: "fullName",
-              placeholder: "Enter your full name",
-            })}
-
-            {renderGender()}
-
-            {renderInput({
-              label: "Date of birth",
-              field: "dob",
-              placeholder: "YYYY-MM-DD",
-              keyboardType:
-                Platform.OS === "ios" ? "numbers-and-punctuation" : "numeric",
-            })}
-
-            <View style={styles.dobHintRow}>
-              <Ionicons
-                name="information-circle-outline"
-                size={14}
-                color={colors.muted}
-              />
-
-              <Text style={styles.dobHint}>You must be 18 or older.</Text>
-
-              {form.dob && isValidDob(form.dob) && (
-                <Text style={styles.agePreview}>
-                  Age: {calculateAge(form.dob)}
-                </Text>
-              )}
-            </View>
-
-            {/* EDUCATION / CAREER */}
-
-            {renderSectionHeader(
-              "school-outline",
-              "Education & career",
-              "Your professional background",
-            )}
-
-            {renderInput({
-              label: "Education",
-              field: "education",
-              placeholder: "e.g. B.Tech, MBA, Graduate",
-            })}
-
-            {renderInput({
-              label: "Occupation",
-              field: "occupation",
-              placeholder: "e.g. Software Engineer",
-            })}
-
-            {/* LOCATION / APPEARANCE */}
-
-            {renderSectionHeader(
-              "location-outline",
-              "Location & appearance",
-              "Basic profile information",
-            )}
-
-            {renderInput({
-              label: "Location",
-              field: "location",
-              placeholder: "Enter your city or location",
-            })}
-
-            {renderInput({
-              label: "Height",
-              field: "height",
-              placeholder: `e.g. 5'8" or 173 cm`,
-            })}
-
-            {renderInput({
-              label: "Weight",
-              field: "weight",
-              placeholder: "e.g. 65 kg",
-              keyboardType: "decimal-pad",
-            })}
-
-            {/* INTERESTS */}
-
-            {renderSectionHeader(
-              "heart-outline",
-              "Interests",
-              "Tell people what you enjoy",
-            )}
-
-            {renderInput({
-              label: "Interests",
-              field: "interests",
-              placeholder: "e.g. Travel, Music, Reading",
-            })}
-
-            <Text style={styles.fieldHint}>
-              Separate multiple interests with commas.
-            </Text>
-
-            {/* FAMILY */}
-
-            {renderSectionHeader(
-              "people-outline",
-              "Family information",
-              "Basic family details",
-            )}
-
-            {renderInput({
-              label: "Father's name",
-              field: "fatherName",
-              placeholder: "Enter father's name",
-            })}
-
-            {renderInput({
-              label: "Father's mobile",
-              field: "fatherMobile",
-              placeholder: "Enter father's mobile number",
-              keyboardType: "phone-pad",
-              autoCapitalize: "none",
-            })}
-
-            {renderInput({
-              label: "Mother's name",
-              field: "motherName",
-              placeholder: "Enter mother's name",
-            })}
-
-            {/* COMPLETE BUTTON */}
-
-            <Pressable
-              style={({ pressed }) => [
-                styles.button,
-                loading && styles.buttonDisabled,
-                pressed && !loading && styles.buttonPressed,
-              ]}
-              onPress={completeProfile}
-              disabled={loading}
-            >
-              {loading ? (
-                <View style={styles.buttonContent}>
-                  <ActivityIndicator size="small" color="#fff" />
-
-                  <Text style={styles.buttonText}>Saving profile...</Text>
-                </View>
-              ) : (
-                <View style={styles.buttonContent}>
-                  <Text style={styles.buttonText}>Complete Profile</Text>
-
-                  <Ionicons name="arrow-forward" size={21} color="#fff" />
-                </View>
-              )}
-            </Pressable>
 
             <Text style={styles.bottomText}>
               You can update your profile details later from your profile
@@ -722,12 +1316,12 @@ const styles = StyleSheet.create({
   },
 
   smallContainer: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
   },
 
   card: {
     width: "100%",
-    maxWidth: 650,
+    maxWidth: 680,
     alignSelf: "center",
   },
 
@@ -744,7 +1338,7 @@ const styles = StyleSheet.create({
 
   header: {
     alignItems: "center",
-    marginBottom: 28,
+    marginBottom: 22,
   },
 
   headerIcon: {
@@ -754,7 +1348,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#EFF6FF",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 16,
+    marginBottom: 14,
   },
 
   title: {
@@ -774,8 +1368,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 21,
     textAlign: "center",
-    maxWidth: 430,
-    marginTop: 8,
+    maxWidth: 450,
+    marginTop: 7,
   },
 
   /* =======================================================
@@ -784,27 +1378,31 @@ const styles = StyleSheet.create({
 
   photoSection: {
     alignItems: "center",
-    marginBottom: 30,
+    marginBottom: 24,
   },
 
   photoButton: {
-    width: 150,
-    height: 150,
-    borderRadius: 75,
+    width: 145,
+    height: 145,
+    borderRadius: 73,
     backgroundColor: "#F8FAFC",
     borderWidth: 2,
     borderColor: colors.border,
     borderStyle: "dashed",
     alignItems: "center",
     justifyContent: "center",
-    overflow: "visible",
     position: "relative",
+  },
+
+  photoButtonFilled: {
+    borderStyle: "solid",
+    borderColor: "#E2E8F0",
   },
 
   profileImage: {
     width: "100%",
     height: "100%",
-    borderRadius: 75,
+    borderRadius: 73,
   },
 
   photoPlaceholder: {
@@ -827,23 +1425,21 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 13,
     fontWeight: "800",
-    textAlign: "center",
   },
 
   photoSubtitle: {
     color: colors.muted,
     fontSize: 10,
-    textAlign: "center",
     marginTop: 3,
   },
 
   cameraBadge: {
     position: "absolute",
-    right: -3,
-    bottom: 5,
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    right: -2,
+    bottom: 3,
+    width: 39,
+    height: 39,
+    borderRadius: 20,
     backgroundColor: colors.primary,
     alignItems: "center",
     justifyContent: "center",
@@ -851,33 +1447,80 @@ const styles = StyleSheet.create({
     borderColor: "#fff",
   },
 
-  photoChangeText: {
-    marginTop: 8,
-    color: colors.primary,
-    fontSize: 12,
-    fontWeight: "700",
+  photoHint: {
+    color: colors.muted,
+    fontSize: 11,
+    marginTop: 9,
   },
 
   /* =======================================================
-     SECTIONS
+     TABS
+  ======================================================= */
+
+  tabContainer: {
+    flexDirection: "row",
+    backgroundColor: "#F1F5F9",
+    borderRadius: 17,
+    padding: 4,
+    marginBottom: 24,
+  },
+
+  tab: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 6,
+  },
+
+  tabSelected: {
+    backgroundColor: "#fff",
+    ...shadow,
+  },
+
+  tabText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: colors.muted,
+  },
+
+  tabTextSelected: {
+    color: colors.primary,
+    fontWeight: "900",
+  },
+
+  /* =======================================================
+     CONTENT
+  ======================================================= */
+
+  contentCard: {
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: "#EEF2F7",
+  },
+
+  /* =======================================================
+     SECTION
   ======================================================= */
 
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 10,
-    marginBottom: 18,
-    paddingTop: 8,
+    marginBottom: 22,
   },
 
   sectionIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
+    width: 42,
+    height: 42,
+    borderRadius: 13,
     backgroundColor: "#EFF6FF",
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 11,
+    marginRight: 12,
   },
 
   sectionHeaderText: {
@@ -885,7 +1528,7 @@ const styles = StyleSheet.create({
   },
 
   sectionTitle: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: "900",
     color: colors.text,
   },
@@ -893,7 +1536,7 @@ const styles = StyleSheet.create({
   sectionSubtitle: {
     fontSize: 11,
     color: colors.muted,
-    marginTop: 2,
+    marginTop: 3,
   },
 
   /* =======================================================
@@ -901,7 +1544,7 @@ const styles = StyleSheet.create({
   ======================================================= */
 
   inputGroup: {
-    marginBottom: 17,
+    marginBottom: 18,
   },
 
   label: {
@@ -913,7 +1556,7 @@ const styles = StyleSheet.create({
 
   input: {
     height: 53,
-    backgroundColor: "#fff",
+    backgroundColor: "#F8FAFC",
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 14,
@@ -928,31 +1571,10 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
   },
 
-  fieldHint: {
+  inputHint: {
     color: colors.muted,
-    fontSize: 11,
-    marginTop: -8,
-    marginBottom: 15,
-  },
-
-  dobHintRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: -9,
-    marginBottom: 17,
-  },
-
-  dobHint: {
-    color: colors.muted,
-    fontSize: 11,
-    marginLeft: 5,
-  },
-
-  agePreview: {
-    color: colors.primary,
-    fontSize: 11,
-    fontWeight: "800",
-    marginLeft: "auto",
+    fontSize: 10,
+    marginTop: 6,
   },
 
   /* =======================================================
@@ -961,7 +1583,7 @@ const styles = StyleSheet.create({
 
   genderRow: {
     flexDirection: "row",
-    gap: 12,
+    gap: 10,
   },
 
   genderButton: {
@@ -970,11 +1592,11 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: "#fff",
+    backgroundColor: "#F8FAFC",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
+    gap: 7,
   },
 
   genderButtonSelected: {
@@ -983,7 +1605,7 @@ const styles = StyleSheet.create({
   },
 
   genderText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "700",
     color: colors.muted,
   },
@@ -994,20 +1616,442 @@ const styles = StyleSheet.create({
   },
 
   /* =======================================================
-     BUTTON
+     AGE
   ======================================================= */
 
-  button: {
-    height: 57,
-    backgroundColor: colors.primary,
-    borderRadius: 15,
+  agePreview: {
+    marginTop: 10,
+    borderRadius: 12,
+    backgroundColor: "#EFF6FF",
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  ageIcon: {
+    width: 29,
+    height: 29,
+    borderRadius: 10,
+    backgroundColor: "#fff",
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 15,
+    marginRight: 9,
+  },
+
+  ageText: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+
+  ageQuickRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 9,
+  },
+
+  ageQuickButton: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: "#fff",
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    borderRadius: 10,
+  },
+
+  ageQuickText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: colors.muted,
+  },
+
+  /* =======================================================
+     INFO
+  ======================================================= */
+
+  infoCard: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: "#F8FAFC",
+    borderRadius: 14,
+    padding: 13,
+    marginTop: 3,
+    borderWidth: 1,
+    borderColor: "#EEF2F7",
+  },
+
+  infoText: {
+    flex: 1,
+    color: colors.muted,
+    fontSize: 11,
+    lineHeight: 17,
+    marginLeft: 9,
+  },
+
+  /* =======================================================
+     DROPDOWN
+  ======================================================= */
+
+  dropdown: {
+    minHeight: 53,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    backgroundColor: "#F8FAFC",
+    paddingHorizontal: 15,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  dropdownActive: {
+    borderColor: colors.primary,
+    backgroundColor: "#fff",
+  },
+
+  dropdownLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+
+  dropdownText: {
+    color: colors.text,
+    fontSize: 15,
+    marginLeft: 10,
+    fontWeight: "600",
+  },
+
+  placeholderText: {
+    color: colors.muted,
+    fontWeight: "400",
+  },
+
+  optionsContainer: {
+    marginTop: 7,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: "#fff",
+    overflow: "hidden",
+  },
+
+  optionsScroll: {
+    maxHeight: 240,
+  },
+
+  option: {
+    minHeight: 46,
+    paddingHorizontal: 15,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+
+  optionSelected: {
+    backgroundColor: "#EFF6FF",
+  },
+
+  optionText: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: "600",
+  },
+
+  optionTextSelected: {
+    color: colors.primary,
+    fontWeight: "800",
+  },
+
+  /* =======================================================
+     FAMILY
+  ======================================================= */
+
+  familyInfoCard: {
+    backgroundColor: "#F8FAFC",
+    borderRadius: 16,
+    padding: 15,
+    flexDirection: "row",
+    borderWidth: 1,
+    borderColor: "#EEF2F7",
+    marginTop: 4,
+  },
+
+  familyInfoIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "#EFF6FF",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 11,
+  },
+
+  familyInfoContent: {
+    flex: 1,
+  },
+
+  familyInfoTitle: {
+    fontSize: 13,
+    fontWeight: "900",
+    color: colors.text,
+  },
+
+  familyInfoText: {
+    fontSize: 11,
+    color: colors.muted,
+    lineHeight: 17,
+    marginTop: 3,
+  },
+
+  /* =======================================================
+     BIO
+  ======================================================= */
+
+  bioCard: {
+    flexDirection: "row",
+    backgroundColor: "#EFF6FF",
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 20,
+  },
+
+  bioIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 11,
+  },
+
+  bioCardContent: {
+    flex: 1,
+  },
+
+  bioCardTitle: {
+    fontSize: 13,
+    fontWeight: "900",
+    color: colors.text,
+  },
+
+  bioCardText: {
+    fontSize: 11,
+    color: colors.muted,
+    lineHeight: 17,
+    marginTop: 3,
+  },
+
+  /* =======================================================
+     INTEREST GROUP
+  ======================================================= */
+
+  interestGroup: {
+    marginBottom: 20,
+  },
+
+  interestGroupHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+
+  interestGroupIcon: {
+    width: 31,
+    height: 31,
+    borderRadius: 10,
+    backgroundColor: "#EFF6FF",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 8,
+  },
+
+  interestGroupTitle: {
+    fontSize: 14,
+    fontWeight: "900",
+    color: colors.text,
+  },
+
+  chipsWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+
+  interestChip: {
+    minHeight: 38,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: colors.border,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+
+  interestChipSelected: {
+    backgroundColor: "#EFF6FF",
+    borderColor: colors.primary,
+  },
+
+  interestChipText: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+
+  interestChipTextSelected: {
+    color: colors.primary,
+    fontWeight: "900",
+  },
+
+  /* =======================================================
+     SELECTED INTERESTS
+  ======================================================= */
+
+  selectedInterestCard: {
+    backgroundColor: "#F8FAFC",
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#EEF2F7",
+    marginTop: 3,
+  },
+
+  selectedInterestHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+
+  selectedInterestTitle: {
+    fontSize: 13,
+    fontWeight: "900",
+    color: colors.text,
+  },
+
+  selectedInterestCount: {
+    minWidth: 25,
+    height: 25,
+    borderRadius: 13,
+    backgroundColor: colors.primary,
+    color: "#fff",
+    textAlign: "center",
+    lineHeight: 25,
+    fontSize: 11,
+    fontWeight: "900",
+  },
+
+  selectedList: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 7,
+  },
+
+  selectedItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    paddingLeft: 10,
+    paddingRight: 7,
+    paddingVertical: 7,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+
+  selectedItemText: {
+    color: colors.text,
+    fontSize: 11,
+    fontWeight: "700",
+    marginRight: 5,
+  },
+
+  noInterestText: {
+    color: colors.muted,
+    fontSize: 11,
+  },
+
+  /* =======================================================
+     NAVIGATION
+  ======================================================= */
+
+  navigationRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 20,
+  },
+
+  navigationPlaceholder: {
+    flex: 1,
+  },
+
+  previousButton: {
+    flex: 0.35,
+    minHeight: 55,
+    borderRadius: 15,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: colors.border,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+  },
+
+  previousButtonText: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: "800",
+  },
+
+  nextButton: {
+    flex: 1,
+    minHeight: 55,
+    borderRadius: 15,
+    backgroundColor: colors.primary,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 9,
+  },
+
+  nextButtonText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "900",
+  },
+
+  completeButton: {
+    flex: 1,
+    minHeight: 55,
+    borderRadius: 15,
+    backgroundColor: colors.primary,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 9,
+  },
+
+  completeButtonText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "900",
+  },
+
+  buttonDisabled: {
+    opacity: 0.6,
   },
 
   buttonPressed: {
-    opacity: 0.85,
+    opacity: 0.86,
     transform: [
       {
         scale: 0.99,
@@ -1015,21 +2059,34 @@ const styles = StyleSheet.create({
     ],
   },
 
-  buttonDisabled: {
-    opacity: 0.6,
-  },
+  /* =======================================================
+     PROGRESS
+  ======================================================= */
 
-  buttonContent: {
-    flexDirection: "row",
+  progressContainer: {
+    marginTop: 18,
     alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
   },
 
-  buttonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "900",
+  progressTrack: {
+    width: "100%",
+    height: 5,
+    backgroundColor: "#E2E8F0",
+    borderRadius: 3,
+    overflow: "hidden",
+  },
+
+  progressFill: {
+    height: "100%",
+    backgroundColor: colors.primary,
+    borderRadius: 3,
+  },
+
+  progressText: {
+    color: colors.muted,
+    fontSize: 10,
+    fontWeight: "700",
+    marginTop: 7,
   },
 
   /* =======================================================
@@ -1041,7 +2098,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 17,
     textAlign: "center",
-    marginTop: 17,
+    marginTop: 15,
     paddingHorizontal: 20,
   },
 });
