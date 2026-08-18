@@ -1,6 +1,8 @@
 import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
+import User from "../models/User.js";
 
-export function auth(req, res, next) {
+export async function auth(req, res, next) {
   try {
     const authHeader = req.headers.authorization;
 
@@ -38,15 +40,6 @@ export function auth(req, res, next) {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    /*
-     * IMPORTANT:
-     * signup/login creates:
-     *
-     * jwt.sign({ userId }, JWT_SECRET)
-     *
-     * So we must read decoded.userId.
-     */
-
     if (!decoded?.userId) {
       return res.status(401).json({
         success: false,
@@ -54,17 +47,27 @@ export function auth(req, res, next) {
       });
     }
 
-    req.userId = decoded.userId;
+    if (!mongoose.Types.ObjectId.isValid(decoded.userId)) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid user ID in authentication token.",
+      });
+    }
 
-    /*
-     * Optional compatibility:
-     * Some older routes may use req.user.id or req.user._id.
-     */
-    req.user = {
-      id: decoded.userId,
-      _id: decoded.userId,
-      userId: decoded.userId,
-    };
+    const user = await User.findById(decoded.userId);
+
+    if (!user) {
+      console.error("AUTH USER NOT FOUND:", decoded.userId);
+
+      return res.status(401).json({
+        success: false,
+        message: "User account not found. Please login again.",
+      });
+    }
+
+    req.userId = user._id.toString();
+
+    req.user = user;
 
     next();
   } catch (error) {
@@ -89,4 +92,4 @@ export function auth(req, res, next) {
       message: "Authentication failed.",
     });
   }
-} 
+}

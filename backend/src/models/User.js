@@ -23,6 +23,12 @@ const userSchema = new mongoose.Schema(
       trim: true,
     },
 
+    profilePhotoPublicId: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
     fullName: {
       type: String,
       default: "",
